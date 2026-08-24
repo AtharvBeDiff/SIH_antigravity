@@ -1,0 +1,324 @@
+# MPLADS Compliance Rules — v1.0.0
+#
+# 17 rules R-001…R-017. Each declares:
+#   severity, params, verification_status, evidence_template, applies_to_status
+#
+# verification_status:
+#   VERIFIED             — arithmetic / scheme design, known correct
+#   NEEDS_VERIFICATION   — threshold believed right, not checked against 2023 guidelines PDF
+#   PLATFORM_POLICY      — an operational threshold we chose
+#
+# A rule must NEVER fire on a null field (doctrine #6).
+# Missing data is a data-quality finding, not evidence of wrongdoing.
+
+rules:
+  # ─── Cost & Financial ────────────────────────────────────
+
+  - id: R-001
+    name: Cost Outlier
+    description: >
+      Sanctioned amount is significantly above the district median
+      for the same work category (robust MAD z-score).
+    severity: HIGH
+    category: FINANCIAL
+    verification_status: VERIFIED
+    params:
+      z_threshold: 3.0
+      min_category_count: 5
+    evidence_template: >
+      Sanctioned amount ₹{{amount}} is {{ratio}}× the district median
+      of ₹{{median}} for {{category}} works (z-score: {{zscore}}).
+    applies_to_status: null
+    enabled: true
+
+  - id: R-002
+    name: Money Released Ahead of Progress
+    description: >
+      Funds released significantly exceed physical progress.
+      Released amount is above threshold relative to completion percentage.
+    severity: HIGH
+    category: FINANCIAL
+    verification_status: NEEDS_VERIFICATION
+    params:
+      release_progress_gap: 40
+      min_released: 100000
+    evidence_template: >
+      Released ₹{{released}} ({{release_pct}}% of sanctioned) but
+      physical progress is only {{progress}}%. Gap: {{gap}} percentage points.
+    applies_to_status:
+      - IN_PROGRESS
+    enabled: true
+
+  - id: R-003
+    name: Missing Utilisation Certificate
+    description: >
+      Work is marked complete but no utilisation certificate is recorded.
+      UC is mandatory for completed works under MPLADS guidelines.
+    severity: MEDIUM
+    category: COMPLIANCE
+    verification_status: VERIFIED
+    params:
+      grace_days: 90
+    evidence_template: >
+      Work completed on {{completion_date}} but no UC filed.
+      {{days_overdue}} days past the {{grace_days}}-day grace period.
+    applies_to_status:
+      - COMPLETED
+    enabled: true
+
+  - id: R-004
+    name: Expenditure Exceeds Sanctioned Amount
+    description: >
+      Total expenditure exceeds the sanctioned amount by more than
+      the allowed variance threshold.
+    severity: CRITICAL
+    category: FINANCIAL
+    verification_status: VERIFIED
+    params:
+      variance_pct: 10
+    evidence_template: >
+      Expenditure ₹{{expenditure}} exceeds sanctioned ₹{{sanctioned}}
+      by {{overrun_pct}}% (threshold: {{variance_pct}}%).
+    applies_to_status: null
+    enabled: true
+
+  - id: R-005
+    name: Zero Expenditure on In-Progress Work
+    description: >
+      Work shows physical progress but has zero expenditure recorded.
+    severity: MEDIUM
+    category: FINANCIAL
+    verification_status: VERIFIED
+    params:
+      min_progress: 10
+    evidence_template: >
+      Work shows {{progress}}% physical progress but ₹0 expenditure.
+    applies_to_status:
+      - IN_PROGRESS
+    enabled: true
+
+  # ─── Timeline & Progress ─────────────────────────────────
+
+  - id: R-006
+    name: Delayed Beyond Scheme Timeline
+    description: >
+      Work has exceeded the MPLADS-prescribed completion timeline
+      without being completed.
+    severity: HIGH
+    category: TIMELINE
+    verification_status: NEEDS_VERIFICATION
+    params:
+      max_months: 24
+    evidence_template: >
+      Work sanctioned on {{sanction_date}}, now {{months_elapsed}} months
+      elapsed (scheme limit: {{max_months}} months). Status: {{status}}.
+    applies_to_status:
+      - NOT_STARTED
+      - IN_PROGRESS
+      - ON_HOLD
+    enabled: true
+
+  - id: R-007
+    name: Stalled — No Progress
+    description: >
+      Work shows no payment activity and no progress update for an
+      extended period.
+    severity: HIGH
+    category: TIMELINE
+    verification_status: PLATFORM_POLICY
+    params:
+      stall_days: 180
+    evidence_template: >
+      No payment or progress update in {{days_stalled}} days
+      (threshold: {{stall_days}} days). Last payment: {{last_payment}}.
+      Progress: {{progress}}%.
+    applies_to_status:
+      - IN_PROGRESS
+      - NOT_STARTED
+    enabled: true
+
+  - id: R-008
+    name: Completed But Low Progress Recorded
+    description: >
+      Work is marked complete but recorded physical progress is below
+      the expected threshold.
+    severity: MEDIUM
+    category: TIMELINE
+    verification_status: PLATFORM_POLICY
+    params:
+      min_completion_progress: 80
+    evidence_template: >
+      Status is COMPLETED but physical progress is only {{progress}}%
+      (expected ≥{{min_completion_progress}}%).
+    applies_to_status:
+      - COMPLETED
+    enabled: true
+
+  # ─── Duplicate & Integrity ───────────────────────────────
+
+  - id: R-009
+    name: Duplicate Work (Text + Geo + Amount)
+    description: >
+      Work appears to be a duplicate based on 2-of-3 corroboration:
+      text similarity, geo proximity, and similar amount.
+    severity: CRITICAL
+    category: INTEGRITY
+    verification_status: PLATFORM_POLICY
+    params:
+      text_threshold: 0.75
+      geo_threshold_m: 500
+      amount_threshold_pct: 15
+      min_corroboration: 2
+    evidence_template: >
+      Potential duplicate of work {{other_work_id}} ({{other_title}}).
+      Matches: {{matches}} ({{match_details}}).
+    applies_to_status: null
+    enabled: true
+
+  - id: R-010
+    name: Photo Reuse Across Works
+    description: >
+      Evidence photo appears to be reused across different works
+      (cross-work only, not self-comparison).
+    severity: CRITICAL
+    category: INTEGRITY
+    verification_status: PLATFORM_POLICY
+    params:
+      hamming_threshold: 8
+    evidence_template: >
+      Evidence image for this work has perceptual hash distance of
+      {{distance}} from work {{other_work_id}} (threshold: {{threshold}}).
+    applies_to_status: null
+    enabled: true
+
+  # ─── Category & Eligibility ──────────────────────────────
+
+  - id: R-011
+    name: Ineligible Category
+    description: >
+      Work is categorised under a category not eligible for
+      MPLADS funding per scheme guidelines.
+    severity: HIGH
+    category: COMPLIANCE
+    verification_status: VERIFIED
+    params: {}
+    evidence_template: >
+      Category '{{category}}' is not eligible for MPLADS funding.
+    applies_to_status: null
+    enabled: true
+
+  - id: R-012
+    name: High-Value Work Without Second Installment
+    description: >
+      High-value work has only first installment released. Second
+      installment should be released after progress verification.
+    severity: LOW
+    category: FINANCIAL
+    verification_status: NEEDS_VERIFICATION
+    params:
+      high_value_threshold: 2500000
+      min_progress_for_second: 50
+    evidence_template: >
+      Sanctioned ₹{{sanctioned}} (≥₹{{threshold}}) with {{progress}}%
+      progress but only first installment of ₹{{first}} released.
+    applies_to_status:
+      - IN_PROGRESS
+    enabled: true
+
+  # ─── Release & Payment ───────────────────────────────────
+
+  - id: R-013
+    name: Released Amount Exceeds Sanctioned
+    description: >
+      Total released amount exceeds the sanctioned amount.
+    severity: HIGH
+    category: FINANCIAL
+    verification_status: VERIFIED
+    params:
+      tolerance_pct: 5
+    evidence_template: >
+      Released ₹{{released}} exceeds sanctioned ₹{{sanctioned}}
+      by {{overrun_pct}}% (tolerance: {{tolerance_pct}}%).
+    applies_to_status: null
+    enabled: true
+
+  - id: R-014
+    name: No First Installment Despite Sanction
+    description: >
+      Work was sanctioned but no first installment has been released
+      within the expected timeframe.
+    severity: MEDIUM
+    category: FINANCIAL
+    verification_status: PLATFORM_POLICY
+    params:
+      max_days_without_first: 90
+    evidence_template: >
+      Sanctioned on {{sanction_date}} ({{days_elapsed}} days ago)
+      but no first installment released.
+    applies_to_status:
+      - NOT_STARTED
+    enabled: true
+
+  # ─── Completion & Documentation ──────────────────────────
+
+  - id: R-015
+    name: Work On Hold Too Long
+    description: >
+      Work has been on hold for an extended period without resolution.
+    severity: MEDIUM
+    category: TIMELINE
+    verification_status: PLATFORM_POLICY
+    params:
+      max_hold_days: 120
+    evidence_template: >
+      Work has been on hold for an estimated {{hold_days}}+ days
+      (threshold: {{max_hold_days}} days).
+    applies_to_status:
+      - ON_HOLD
+    enabled: true
+
+  # ─── Compliance Statistics (not risk — doctrine #3) ──────
+
+  - id: R-016
+    name: SC/ST Allocation Compliance
+    description: >
+      Tracks whether the constituency meets the minimum 15% (SC) and
+      7.5% (ST) allocation mandates. Reported as compliance statistics.
+    severity: LOW
+    category: COMPLIANCE
+    verification_status: VERIFIED
+    params:
+      sc_min_pct: 15
+      st_min_pct: 7.5
+    evidence_template: >
+      SC allocation: {{sc_pct}}% (minimum: {{sc_min_pct}}%).
+      ST allocation: {{st_pct}}% (minimum: {{st_min_pct}}%).
+    applies_to_status: null
+    enabled: true
+
+  - id: R-017
+    name: Inspection Coverage
+    description: >
+      Tracks the percentage of completed works that have been
+      physically inspected. Reported as compliance statistics.
+    severity: LOW
+    category: COMPLIANCE
+    verification_status: PLATFORM_POLICY
+    params:
+      target_coverage_pct: 50
+    evidence_template: >
+      {{inspected}} of {{completed}} completed works inspected
+      ({{coverage_pct}}%, target: {{target_coverage_pct}}%).
+    applies_to_status: null
+    enabled: true
+
+# ─── Probation Config ─────────────────────────────────────
+
+probation:
+  threshold: 0.40          # 40% actionable rate minimum
+  min_reviews: 25          # don't evaluate until N reviews
+
+# ─── Alert Budget Config ─────────────────────────────────
+
+alert_budget:
+  max_per_district: 10     # excess → BACKLOG (visible, never hidden)
