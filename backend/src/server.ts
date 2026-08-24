@@ -35,11 +35,25 @@ const app = express();
 const PORT = parseInt(process.env['PORT'] ?? '4000', 10);
 const DEMO_MODE = process.env['DEMO_MODE'] === 'true';
 
-// Middleware
+// Flexible CORS for Railway + Vercel + Local dev
 app.use(cors({
-  origin: process.env['FRONTEND_URL'] ?? 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // allow requests with no origin (like mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    if (
+      origin.startsWith('http://localhost') ||
+      origin.startsWith('https://localhost') ||
+      origin.endsWith('.vercel.app') ||
+      (process.env['FRONTEND_URL'] && origin === process.env['FRONTEND_URL'])
+    ) {
+      return callback(null, true);
+    }
+    // Permissive fallback for demo
+    return callback(null, true);
+  },
   credentials: true,
 }));
+
 app.use(express.json({ limit: '10mb' }));
 
 // Health check
@@ -90,7 +104,7 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 
 // ─── Start ───────────────────────────────────────────────────
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`[MPLADS] Server running on :${PORT}`);
   console.log(`[MPLADS] DEMO_MODE=${DEMO_MODE}`);
   console.log(`[MPLADS] Supabase URL: ${process.env['SUPABASE_URL']?.slice(0, 30)}...`);
