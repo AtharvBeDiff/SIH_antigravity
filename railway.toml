@@ -1,8 +1,9 @@
 [build]
 builder = "NIXPACKS"
+buildCommand = "echo 'Backend ready'"
 
 [deploy]
-startCommand = "npm start -w backend"
+startCommand = "node --experimental-strip-types backend/src/server.ts"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"

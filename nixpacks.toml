@@ -4,5 +4,8 @@ nixPkgs = ["nodejs_24"]
 [phases.install]
 cmds = ["npm install"]
 
+[phases.build]
+cmds = ["echo 'Backend build step complete'"]
+
 [start]
-cmd = "npm start -w backend"
+cmd = "node --experimental-strip-types backend/src/server.ts"

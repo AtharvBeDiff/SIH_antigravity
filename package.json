@@ -9,15 +9,16 @@
     "data-gen"
   ],
   "scripts": {
-    "start": "npm start -w backend",
+    "start": "node --experimental-strip-types backend/src/server.ts",
+    "build": "echo 'Backend ready for deployment'",
+    "build:frontend": "npm run build -w frontend",
     "dev": "npm run dev:backend & npm run dev:frontend",
     "dev:backend": "npm run dev -w backend",
     "dev:frontend": "npm run dev -w frontend",
     "seed": "npm run seed -w backend",
     "reset": "npm run reset -w backend",
     "test": "npm test -w backend",
-    "typecheck": "npm run typecheck -w backend & npm run typecheck -w frontend",
-    "build": "npm run build -w frontend"
+    "typecheck": "npm run typecheck -w backend & npm run typecheck -w frontend"
   },
   "engines": {
     "node": ">=24.0.0"
