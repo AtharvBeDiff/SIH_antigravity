@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../db.ts';
 import { newId } from '../util.ts';
-import { ApiError } from '../types.ts';
+import { ApiError } from '../http.ts';
 
 const router = Router();
 
@@ -22,7 +22,12 @@ router.get('/', async (req, res, next) => {
     }
 
     const { data, error } = await query;
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST205' || error.message?.includes('health_reports')) {
+        return res.json({ data: [] });
+      }
+      throw error;
+    }
 
     res.json({ data: data || [] });
   } catch (error) {
@@ -36,7 +41,7 @@ router.post('/', async (req, res, next) => {
     const { work_id, reported_by, progress_pct, evidence_image_key, remarks } = req.body;
 
     if (!work_id || progress_pct === undefined || !evidence_image_key) {
-      throw new ApiError(400, 'work_id, progress_pct, and evidence_image_key are required for health reports');
+      throw new ApiError(400, 'BAD_REQUEST', 'work_id, progress_pct, and evidence_image_key are required for health reports');
     }
 
     const db = getDb();
