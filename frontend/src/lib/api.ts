@@ -112,5 +112,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  },
+  public: {
+    list: (search?: string) => {
+      const q = search ? `?search=${encodeURIComponent(search)}` : '';
+      return request<any>(`/public/works${q}`);
+    },
+    get: (id: string) => request<any>(`/public/works/${id}`),
   }
 };

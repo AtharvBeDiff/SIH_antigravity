@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { PageHeader, Card, Button, StatusBadge, Spinner } from '../components/ui';
+import { api } from '../lib/api';
 import { formatCurrency, formatDate } from '../lib/utils';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Building, CheckCircle2, Globe, MapPin, Search } from 'lucide-react';
@@ -13,9 +14,8 @@ export function PublicListPage() {
   const loadWorks = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/public/works?search=${encodeURIComponent(search)}`);
-      const json = await res.json();
-      setWorks(json.data || []);
+      const res = await api.public.list(search);
+      setWorks(res || []);
     } catch (err) {
       console.error('Failed to load public works:', err);
     } finally {

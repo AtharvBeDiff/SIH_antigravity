@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { api } from '../lib/api';
 import { PageHeader, Card, Button, StatusBadge, Spinner } from '../components/ui';
 import { formatCurrency, formatDate } from '../lib/utils';
 import { ArrowLeft, Building, Calendar, CheckCircle2, Globe, MapPin } from 'lucide-react';
@@ -13,9 +14,8 @@ export function PublicDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    fetch(`/api/public/works/${id}`)
-      .then(res => res.json())
-      .then(json => setWork(json.data))
+    api.public.get(id)
+      .then(data => setWork(data))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [id]);
