@@ -442,3 +442,50 @@ export interface DashboardStats {
   open_alerts: number;
   backlog_alerts: number;
 }
+
+// ─── Feature-specific types ─────────────────────────────────
+
+export interface HeatmapPoint {
+  date: string;
+  count: number;
+  category?: string;
+  worksSanctioned?: number;
+  worksCompleted?: number;
+  payments?: number;
+  inspections?: number;
+}
+
+export interface QuotaStats {
+  scspTarget: number;
+  scspPercentage: number;
+  scspSanctioned: number;
+  tspTarget: number;
+  tspPercentage: number;
+  tspSanctioned: number;
+  totalSanctioned: number;
+  total_works: number;
+  scsp_works: number;
+  tsp_works: number;
+}
+
+export interface SLAStats {
+  stage: string;
+  avgDays: number;
+  avg_days: number;
+  target_days: number;
+  breached: number;
+  atRisk: number;
+  safe: number;
+  total: number;
+}
+
+export interface HealthReport {
+  id: string;
+  work_id: string;
+  reported_by: string;
+  report_date: string;
+  progress_pct: number;
+  evidence_image_key?: string;
+  remarks?: string;
+  created_at: string;
+}
