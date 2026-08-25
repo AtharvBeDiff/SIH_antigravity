@@ -60,7 +60,7 @@ export function OverviewPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="MPLADS Integrity & Oversight Dashboard"
+        title="DRISHTI: MPLADS Integrity & Oversight Dashboard"
         description="Real-time fund utilization, physical milestone tracking, and algorithmic risk telemetry."
         action={
           <div className="flex items-center gap-3">

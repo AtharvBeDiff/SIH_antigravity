@@ -1,5 +1,5 @@
 /**
- * MPLADS Insight & Integrity Platform — Canonical Types
+ * DRISHTI — MPLADS Insight & Integrity Platform (Canonical Types)
  *
  * THE source of truth for every shape in the system.
  * Read this before declaring any type. Do NOT duplicate or shadow.

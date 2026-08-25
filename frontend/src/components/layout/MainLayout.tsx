@@ -84,10 +84,10 @@ export function MainLayout() {
                   </div>
                   <div>
                     <span className="font-bold text-base tracking-tight bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">
-                      MPLADS Insight
+                      DRISHTI
                     </span>
                     <span className="block text-[10px] text-text-muted font-mono leading-none">
-                      Integrity Platform
+                      MPLADS Integrity Hub
                     </span>
                   </div>
                 </div>

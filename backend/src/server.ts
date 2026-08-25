@@ -113,9 +113,9 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 // ─── Start ───────────────────────────────────────────────────
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[MPLADS] Server running on :${PORT}`);
-  console.log(`[MPLADS] DEMO_MODE=${DEMO_MODE}`);
-  console.log(`[MPLADS] Supabase URL: ${process.env['SUPABASE_URL']?.slice(0, 30)}...`);
+  console.log(`[DRISHTI] Server running on :${PORT}`);
+  console.log(`[DRISHTI] DEMO_MODE=${DEMO_MODE}`);
+  console.log(`[DRISHTI] Supabase URL: ${process.env['SUPABASE_URL']?.slice(0, 30)}...`);
 });
 
 export default app;

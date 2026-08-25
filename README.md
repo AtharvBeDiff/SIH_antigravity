@@ -1,12 +1,13 @@
-# MPLADS Insight & Integrity Platform
+# DRISHTI (दृष्टि) — MPLADS Insight & Integrity Platform
 
-> **Comprehensive AI & Cryptographic Oversight Engine for the Member of Parliament Local Area Development Scheme (MPLADS)**
+> **Digital Real-time Integrity & Surveillance Hub for Transparent Infrastructure**  
+> *AI & Cryptographic Oversight Engine for the Member of Parliament Local Area Development Scheme (MPLADS)*
 
 ---
 
 ## 🏛️ Executive Summary
 
-The MPLADS Insight & Integrity Platform bridges the national **19.24% fund-to-completion delivery gap** using explainable algorithmic triage, 17 automated compliance rules, 4 multi-modal anomaly detectors (Cost Outlier MAD z-score, Delay Pacing, 2-of-3 Duplicate Corroboration, and Photo Reuse Hash Matching), and a **tamper-evident SHA-256 cryptographic audit ledger**.
+**Project DRISHTI** bridges the national **19.24% fund-to-completion delivery gap** using explainable algorithmic triage, 17 automated compliance rules, multi-modal anomaly detectors (Cost Outlier MAD z-score, Delay Pacing, 2-of-3 Duplicate Corroboration, Photo Reuse Hash Matching, and 10-Day Health Cadence Monitoring), and a **tamper-evident SHA-256 cryptographic audit ledger**.
 
 ---
 
