@@ -4,8 +4,8 @@ export function Dashboard() {
   return (
     <div className="space-y-6">
       <header className="mb-8">
-        <h2 className="text-2xl font-bold tracking-tight text-white">District Overview</h2>
-        <p className="text-text-muted mt-1">Real-time performance and anomaly detection across constituencies.</p>
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900">District Overview</h2>
+        <p className="text-slate-500 mt-1">Real-time performance and anomaly detection across constituencies.</p>
       </header>
 
       {/* Stat Cards */}
@@ -23,11 +23,11 @@ export function Dashboard() {
             transition={{ delay: i * 0.1 }}
             className={`glass-card p-5 rounded-xl border ${stat.color}`}
           >
-            <p className="text-sm font-medium text-text-muted">{stat.label}</p>
+            <p className="text-sm font-medium text-slate-500">{stat.label}</p>
             <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-white">{stat.value}</span>
+              <span className="text-3xl font-bold text-slate-900">{stat.value}</span>
             </div>
-            <p className="mt-1 text-xs text-secondary">{stat.change}</p>
+            <p className="mt-1 text-xs text-blue-600">{stat.change}</p>
           </motion.div>
         ))}
       </div>
@@ -35,10 +35,10 @@ export function Dashboard() {
       {/* Placeholder for Charts & Lists */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
         <div className="lg:col-span-2 glass-card rounded-xl p-6 h-[400px] flex items-center justify-center border-white/5">
-          <p className="text-text-muted">Expenditure Burn Rate Chart (Recharts Integration Pending)</p>
+          <p className="text-slate-500">Expenditure Burn Rate Chart (Recharts Integration Pending)</p>
         </div>
         <div className="glass-card rounded-xl p-6 h-[400px] flex items-center justify-center border-white/5">
-          <p className="text-text-muted">Active Alerts Feed</p>
+          <p className="text-slate-500">Active Alerts Feed</p>
         </div>
       </div>
     </div>

@@ -1,3 +1,3 @@
 export function AuditLog() {
-  return <div className="p-4 text-white">Audit Log Component</div>;
+  return <div className="p-4 text-slate-900">Audit Log Component</div>;
 }

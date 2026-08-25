@@ -59,9 +59,9 @@ export function InspectionListPage() {
             <Spinner className="w-8 h-8" />
           </div>
         ) : inspections.length === 0 ? (
-          <Card className="col-span-full py-16 text-center text-text-muted space-y-3">
-            <ClipboardCheck className="w-10 h-10 text-secondary mx-auto" />
-            <p className="text-white font-medium">No recorded field inspections</p>
+          <Card className="col-span-full py-16 text-center text-slate-500 space-y-3">
+            <ClipboardCheck className="w-10 h-10 text-blue-600 mx-auto" />
+            <p className="text-slate-900 font-medium">No recorded field inspections</p>
             <p className="text-xs max-w-sm mx-auto">Start a new physical inspection to verify assets and geotag project deliverables.</p>
             <Link to="/inspection/new">
               <Button variant="primary" size="sm">Create First Inspection</Button>
@@ -71,7 +71,7 @@ export function InspectionListPage() {
           inspections.map((ins) => (
             <Card key={ins.id} className="space-y-3 hover:border-white/20 transition-colors p-5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-secondary/10 text-secondary border border-secondary/20 font-mono">
+                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200 font-mono">
                   {ins.inspection_date}
                 </span>
                 <span className={`text-xs px-2 py-0.5 rounded font-bold ${
@@ -83,17 +83,17 @@ export function InspectionListPage() {
                 </span>
               </div>
 
-              <h4 className="text-sm font-bold text-white">
+              <h4 className="text-sm font-bold text-slate-900">
                 Inspector: {ins.inspector_name || 'Field Officer'}
               </h4>
 
-              <div className="flex items-center gap-2 text-xs text-text-muted">
-                <MapPin className="w-3.5 h-3.5 text-text-muted" />
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <MapPin className="w-3.5 h-3.5 text-slate-500" />
                 <span className="font-mono text-[11px]">{ins.latitude?.toFixed(4)}, {ins.longitude?.toFixed(4)}</span>
               </div>
 
               {ins.notes && (
-                <p className="text-xs text-text-muted line-clamp-2 bg-surface p-2 rounded border border-white/5">
+                <p className="text-xs text-slate-500 line-clamp-2 bg-slate-50 p-2 rounded border border-white/5">
                   "{ins.notes}"
                 </p>
               )}

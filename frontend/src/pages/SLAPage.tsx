@@ -87,8 +87,8 @@ export function SLAPage() {
       </div>
 
       <Card className="p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">SLA Engine Overview</h3>
-        <div className="space-y-4 text-text-muted">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">SLA Engine Overview</h3>
+        <div className="space-y-4 text-slate-500">
           <p>
             The SLA Gatekeeping Engine tracks the timeline from when a work is first proposed (Recommended Date) until it is officially sanctioned by the District Authority.
           </p>

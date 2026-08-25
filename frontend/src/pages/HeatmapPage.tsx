@@ -14,7 +14,7 @@ export function HeatmapPage() {
     try {
       setLoading(true);
       const res = await api.heatmap.get(selectedDistrict ? { district_id: selectedDistrict } : undefined);
-      setData(res.data || []);
+      setData(res || []);
     } catch (err) {
       console.error('Failed to load heatmap data:', err);
     } finally {
@@ -42,7 +42,7 @@ export function HeatmapPage() {
   data.forEach(p => activityMap.set(p.date, p));
 
   const getColor = (count: number) => {
-    if (count === 0) return 'bg-surface border-white/5';
+    if (count === 0) return 'bg-slate-50 border-white/5';
     if (count <= 2) return 'bg-emerald-900 border-emerald-800';
     if (count <= 5) return 'bg-emerald-700 border-emerald-600';
     if (count <= 10) return 'bg-emerald-500 border-emerald-400';
@@ -55,7 +55,7 @@ export function HeatmapPage() {
         title="Activity Heatmap"
         description="System-wide telemetry of physical progress, fund releases, and inspections."
         action={
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/10 border border-secondary/20 text-secondary text-sm">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-blue-600 text-sm">
             <Activity className="w-4 h-4" />
             <span>Live Pulse</span>
           </div>
@@ -63,10 +63,10 @@ export function HeatmapPage() {
       />
 
       <Card className="p-6 overflow-x-auto">
-        <h3 className="text-lg font-semibold text-white mb-6">Annual Operational Velocity</h3>
+        <h3 className="text-lg font-semibold text-slate-900 mb-6">Annual Operational Velocity</h3>
         
         {loading ? (
-          <div className="h-40 flex items-center justify-center text-text-muted">Loading telemetry...</div>
+          <div className="h-40 flex items-center justify-center text-slate-500">Loading telemetry...</div>
         ) : (
           <div className="min-w-[800px]">
             <div className="flex flex-wrap gap-1">
@@ -82,10 +82,10 @@ export function HeatmapPage() {
                 );
               })}
             </div>
-            <div className="mt-6 flex items-center justify-end gap-2 text-xs text-text-muted">
+            <div className="mt-6 flex items-center justify-end gap-2 text-xs text-slate-500">
               <span>Less</span>
               <div className="flex gap-1">
-                <div className="w-3.5 h-3.5 rounded-[2px] border bg-surface border-white/5" />
+                <div className="w-3.5 h-3.5 rounded-[2px] border bg-slate-50 border-white/5" />
                 <div className="w-3.5 h-3.5 rounded-[2px] border bg-emerald-900 border-emerald-800" />
                 <div className="w-3.5 h-3.5 rounded-[2px] border bg-emerald-700 border-emerald-600" />
                 <div className="w-3.5 h-3.5 rounded-[2px] border bg-emerald-500 border-emerald-400" />
@@ -99,16 +99,16 @@ export function HeatmapPage() {
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
          <Card className="p-6">
-            <h4 className="text-sm font-semibold text-white mb-2">Sanctions vs Completions</h4>
-            <p className="text-xs text-text-muted">Visualizes the flow of newly sanctioned projects against those physically completed and verified.</p>
+            <h4 className="text-sm font-semibold text-slate-900 mb-2">Sanctions vs Completions</h4>
+            <p className="text-xs text-slate-500">Visualizes the flow of newly sanctioned projects against those physically completed and verified.</p>
          </Card>
          <Card className="p-6">
-            <h4 className="text-sm font-semibold text-white mb-2">Payment Velocity</h4>
-            <p className="text-xs text-text-muted">Tracks the volume and frequency of tranche releases across the district.</p>
+            <h4 className="text-sm font-semibold text-slate-900 mb-2">Payment Velocity</h4>
+            <p className="text-xs text-slate-500">Tracks the volume and frequency of tranche releases across the district.</p>
          </Card>
          <Card className="p-6">
-            <h4 className="text-sm font-semibold text-white mb-2">Field Inspections</h4>
-            <p className="text-xs text-text-muted">Monitors the on-ground verification activity by nodal officers.</p>
+            <h4 className="text-sm font-semibold text-slate-900 mb-2">Field Inspections</h4>
+            <p className="text-xs text-slate-500">Monitors the on-ground verification activity by nodal officers.</p>
          </Card>
       </div>
     </div>

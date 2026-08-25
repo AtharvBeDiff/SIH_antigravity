@@ -38,10 +38,10 @@ export function RulesPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Rules Catalog List */}
-        <Card className="lg:col-span-1 p-0 overflow-hidden divide-y divide-border/40">
-          <div className="p-4 bg-surface/50 border-b border-border/50">
-            <h3 className="text-sm font-semibold text-white">Rule Catalog (17 Rules)</h3>
-            <p className="text-xs text-text-muted mt-0.5">Click any rule to inspect logic & probation state</p>
+        <Card className="lg:col-span-1 p-0 overflow-hidden divide-y divide-slate-100">
+          <div className="p-4 bg-slate-50/50 border-b border-slate-200/50">
+            <h3 className="text-sm font-semibold text-slate-900">Rule Catalog (17 Rules)</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Click any rule to inspect logic & probation state</p>
           </div>
 
           {loading ? (
@@ -49,7 +49,7 @@ export function RulesPage() {
               <Spinner className="w-6 h-6" />
             </div>
           ) : (
-            <div className="max-h-[600px] overflow-y-auto divide-y divide-border/30">
+            <div className="max-h-[600px] overflow-y-auto divide-y divide-slate-100">
               {rules.map((r) => {
                 const isSelected = selectedRule?.id === r.id;
                 const isSuspended = r.probation?.suspended;
@@ -58,12 +58,12 @@ export function RulesPage() {
                     key={r.id}
                     onClick={() => setSelectedRule(r)}
                     className={`w-full text-left p-4 transition-colors cursor-pointer flex flex-col gap-1.5 ${
-                      isSelected ? 'bg-secondary/10 border-l-4 border-secondary' : 'hover:bg-white/[0.02]'
+                      isSelected ? 'bg-blue-50 border-l-4 border-secondary' : 'hover:bg-slate-50'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono font-bold text-secondary">{r.id}</span>
+                        <span className="text-xs font-mono font-bold text-blue-600">{r.id}</span>
                         <SeverityChip severity={r.severity} />
                       </div>
                       {isSuspended ? (
@@ -76,8 +76,8 @@ export function RulesPage() {
                         </span>
                       )}
                     </div>
-                    <p className="text-sm font-semibold text-white line-clamp-1">{r.name}</p>
-                    <p className="text-xs text-text-muted line-clamp-1">{r.description}</p>
+                    <p className="text-sm font-semibold text-slate-900 line-clamp-1">{r.name}</p>
+                    <p className="text-xs text-slate-500 line-clamp-1">{r.description}</p>
                   </button>
                 );
               })}
@@ -89,43 +89,43 @@ export function RulesPage() {
         <div className="lg:col-span-2 space-y-6">
           {selectedRule ? (
             <>
-              <Card className="space-y-5 border-secondary/20">
-                <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-border/50">
+              <Card className="space-y-5 border-blue-200">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-200/50">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-mono font-bold text-secondary">{selectedRule.id}</span>
-                      <h2 className="text-xl font-bold text-white">{selectedRule.name}</h2>
+                      <span className="text-sm font-mono font-bold text-blue-600">{selectedRule.id}</span>
+                      <h2 className="text-xl font-bold text-slate-900">{selectedRule.name}</h2>
                     </div>
-                    <p className="text-xs text-text-muted mt-1">Category: {selectedRule.category}</p>
+                    <p className="text-xs text-slate-500 mt-1">Category: {selectedRule.category}</p>
                   </div>
                   <VerificationBadge status={selectedRule.verification_status} />
                 </div>
 
                 <div className="space-y-2">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-text-muted">Rule Objective</h4>
-                  <p className="text-sm text-text-main leading-relaxed bg-surface/90 p-4 rounded-lg border border-white/5">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Rule Objective</h4>
+                  <p className="text-sm text-text-main leading-relaxed bg-slate-50/90 p-4 rounded-lg border border-white/5">
                     {selectedRule.description}
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-text-muted">Evidence Template</h4>
-                  <pre className="text-xs font-mono text-secondary bg-surface/90 p-4 rounded-lg border border-white/5 overflow-x-auto">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Evidence Template</h4>
+                  <pre className="text-xs font-mono text-blue-600 bg-slate-50/90 p-4 rounded-lg border border-white/5 overflow-x-auto">
                     {selectedRule.evidence_template}
                   </pre>
                 </div>
 
                 {/* Parameters & Applicability */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-3.5 rounded-lg bg-surface border border-white/5 space-y-1 text-xs">
-                    <span className="text-text-muted font-medium">Lifecycle Applicability</span>
-                    <p className="text-white font-semibold">
+                  <div className="p-3.5 rounded-lg bg-slate-50 border border-white/5 space-y-1 text-xs">
+                    <span className="text-slate-500 font-medium">Lifecycle Applicability</span>
+                    <p className="text-slate-900 font-semibold">
                       {selectedRule.applies_to_status ? selectedRule.applies_to_status.join(', ') : 'All Work Lifecycles'}
                     </p>
                   </div>
-                  <div className="p-3.5 rounded-lg bg-surface border border-white/5 space-y-1 text-xs">
-                    <span className="text-text-muted font-medium">Configured Parameters</span>
-                    <pre className="text-xs font-mono text-white">
+                  <div className="p-3.5 rounded-lg bg-slate-50 border border-white/5 space-y-1 text-xs">
+                    <span className="text-slate-500 font-medium">Configured Parameters</span>
+                    <pre className="text-xs font-mono text-slate-900">
                       {JSON.stringify(selectedRule.params, null, 2)}
                     </pre>
                   </div>
@@ -135,32 +135,32 @@ export function RulesPage() {
               {/* Live Probation State Card */}
               <Card className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-secondary" />
+                  <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-blue-600" />
                     <span>Empirical Probation Matrix (Self-Pruning Guardrail)</span>
                   </h3>
-                  <span className="text-xs text-text-muted">Threshold: 40% actionable over 25 reviews</span>
+                  <span className="text-xs text-slate-500">Threshold: 40% actionable over 25 reviews</span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 p-4 rounded-lg bg-surface border border-white/5 text-center">
+                <div className="grid grid-cols-3 gap-4 p-4 rounded-lg bg-slate-50 border border-white/5 text-center">
                   <div>
-                    <p className="text-xs text-text-muted">Total Reviews</p>
-                    <p className="text-xl font-bold text-white mt-1">{selectedRule.probation?.total_reviews ?? 0}</p>
+                    <p className="text-xs text-slate-500">Total Reviews</p>
+                    <p className="text-xl font-bold text-slate-900 mt-1">{selectedRule.probation?.total_reviews ?? 0}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-text-muted">Dismissals</p>
+                    <p className="text-xs text-slate-500">Dismissals</p>
                     <p className="text-xl font-bold text-amber-400 mt-1">{selectedRule.probation?.dismissals ?? 0}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-text-muted">Actionable Rate</p>
+                    <p className="text-xs text-slate-500">Actionable Rate</p>
                     <p className="text-xl font-bold text-emerald-400 mt-1">
                       {(((selectedRule.probation?.actionable_rate ?? 1.0)) * 100).toFixed(1)}%
                     </p>
                   </div>
                 </div>
 
-                <div className="text-xs text-text-muted flex items-center gap-2">
-                  <Info className="w-4 h-4 text-secondary" />
+                <div className="text-xs text-slate-500 flex items-center gap-2">
+                  <Info className="w-4 h-4 text-blue-600" />
                   <span>
                     If false positives exceed 60% after 25 casework reviews, this rule is automatically suspended to protect officer attention.
                   </span>
@@ -168,7 +168,7 @@ export function RulesPage() {
               </Card>
             </>
           ) : (
-            <div className="py-24 text-center text-text-muted">Select a rule from the catalog to inspect.</div>
+            <div className="py-24 text-center text-slate-500">Select a rule from the catalog to inspect.</div>
           )}
         </div>
       </div>

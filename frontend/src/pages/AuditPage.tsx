@@ -21,7 +21,7 @@ export function AuditPage() {
         api.audit.list({ limit: '50' }),
         api.audit.verify(),
       ]);
-      setEvents(eventsRes.data || []);
+      setEvents(eventsRes || []);
       setVerification(verifyRes);
     } catch (err) {
       console.error('Failed to load audit chain:', err);
@@ -100,7 +100,7 @@ export function AuditPage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-xl font-bold text-white">
+                <h2 className="text-xl font-bold text-slate-900">
                   {isValid ? 'Hash Chain Verified & Intact' : 'CRITICAL: Cryptographic Chain Broken!'}
                 </h2>
                 <span
@@ -111,7 +111,7 @@ export function AuditPage() {
                   {isValid ? 'CHAIN SECURE' : 'INTEGRITY BREACH'}
                 </span>
               </div>
-              <p className="text-xs text-text-muted mt-1">
+              <p className="text-xs text-slate-500 mt-1">
                 {isValid
                   ? `All ${verification?.checked ?? 0} sequential audit blocks mathematically validated against sha256 links.`
                   : `Tampering detected at block sequence #${verification?.first_break?.seq}. Reason: ${verification?.first_break?.reason}`}
@@ -147,65 +147,65 @@ export function AuditPage() {
 
       {/* Audit Blocks Stream */}
       <Card className="p-0 overflow-hidden space-y-0">
-        <div className="p-4 border-b border-border/50 bg-surface/50 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-            <History className="w-4 h-4 text-secondary" />
+        <div className="p-4 border-b border-slate-200/50 bg-slate-50/50 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+            <History className="w-4 h-4 text-blue-600" />
             <span>Cryptographic Event Blocks (Sequence 1 → Head)</span>
           </h3>
-          <span className="text-xs text-text-muted font-mono">Genesis = 0000000000000000...</span>
+          <span className="text-xs text-slate-500 font-mono">Genesis = 0000000000000000...</span>
         </div>
 
         {loading ? (
-          <div className="py-20 flex flex-col items-center justify-center gap-2 text-text-muted">
+          <div className="py-20 flex flex-col items-center justify-center gap-2 text-slate-500">
             <Spinner className="w-8 h-8" />
             <p className="text-sm">Traversing hash ledger...</p>
           </div>
         ) : (
-          <div className="divide-y divide-border/40 font-mono text-xs">
+          <div className="divide-y divide-slate-100 font-mono text-xs">
             {events.map((evt) => {
               const isTamperedBlock = !isValid && verification?.first_break?.seq === evt.seq;
               return (
                 <div
                   key={evt.seq}
                   className={`p-5 transition-colors space-y-3 ${
-                    isTamperedBlock ? 'bg-destructive/15 border-l-4 border-destructive' : 'hover:bg-white/[0.02]'
+                    isTamperedBlock ? 'bg-destructive/15 border-l-4 border-destructive' : 'hover:bg-slate-50'
                   }`}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-3">
-                      <span className="px-2 py-0.5 rounded bg-secondary/20 text-secondary font-bold">
+                      <span className="px-2 py-0.5 rounded bg-blue-600/20 text-blue-600 font-bold">
                         SEQ #{evt.seq}
                       </span>
-                      <strong className="text-white text-sm">{evt.action}</strong>
-                      <span className="text-text-muted font-sans text-xs">
-                        by <span className="text-white">{evt.actor}</span> on {evt.entity_type}:{evt.entity_id.slice(0, 8)}
+                      <strong className="text-slate-900 text-sm">{evt.action}</strong>
+                      <span className="text-slate-500 font-sans text-xs">
+                        by <span className="text-slate-900">{evt.actor}</span> on {evt.entity_type}:{evt.entity_id.slice(0, 8)}
                       </span>
                     </div>
-                    <span className="text-text-muted text-[11px]">
+                    <span className="text-slate-500 text-[11px]">
                       {new Date(evt.created_at).toLocaleString('en-IN')}
                     </span>
                   </div>
 
                   {/* Cryptographic Linkage Block */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 rounded-lg bg-surface/90 border border-white/5 text-[11px]">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 rounded-lg bg-slate-50/90 border border-white/5 text-[11px]">
                     <div>
-                      <span className="text-text-muted block">Previous Hash (H_prev):</span>
-                      <span className="text-text-muted break-all">{evt.prev_hash.slice(0, 24)}...</span>
+                      <span className="text-slate-500 block">Previous Hash (H_prev):</span>
+                      <span className="text-slate-500 break-all">{evt.prev_hash.slice(0, 24)}...</span>
                     </div>
                     <div>
-                      <span className="text-text-muted block">Payload Hash (H_data):</span>
-                      <span className="text-secondary break-all">{evt.payload_hash.slice(0, 24)}...</span>
+                      <span className="text-slate-500 block">Payload Hash (H_data):</span>
+                      <span className="text-blue-600 break-all">{evt.payload_hash.slice(0, 24)}...</span>
                     </div>
                     <div>
-                      <span className="text-text-muted block">This Block Hash (H_this):</span>
+                      <span className="text-slate-500 block">This Block Hash (H_this):</span>
                       <span className="text-emerald-400 font-bold break-all">{evt.this_hash.slice(0, 24)}...</span>
                     </div>
                   </div>
 
                   {/* Payload Details */}
-                  <div className="text-[11px] text-text-muted font-sans">
-                    <span className="font-semibold text-white">Payload:</span>{' '}
-                    <code className="text-xs text-text-muted font-mono">{JSON.stringify(evt.payload)}</code>
+                  <div className="text-[11px] text-slate-500 font-sans">
+                    <span className="font-semibold text-slate-900">Payload:</span>{' '}
+                    <code className="text-xs text-slate-500 font-mono">{JSON.stringify(evt.payload)}</code>
                   </div>
                 </div>
               );

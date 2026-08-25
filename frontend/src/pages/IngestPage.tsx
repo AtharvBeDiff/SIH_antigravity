@@ -32,15 +32,15 @@ export function IngestPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 space-y-5">
-          <h3 className="text-base font-semibold text-white">Upload New e-SAKSHI Export</h3>
+          <h3 className="text-base font-semibold text-slate-900">Upload New e-SAKSHI Export</h3>
 
-          <div className="border-2 border-dashed border-border/80 hover:border-secondary/50 rounded-xl p-8 text-center space-y-3 transition-colors bg-surface/30 cursor-pointer">
-            <div className="w-12 h-12 rounded-full bg-secondary/10 text-secondary flex items-center justify-center mx-auto">
+          <div className="border-2 border-dashed border-slate-200/80 hover:border-secondary/50 rounded-xl p-8 text-center space-y-3 transition-colors bg-slate-50/30 cursor-pointer">
+            <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
               <UploadCloud className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-sm font-medium text-white">Drag & drop your e-SAKSHI CSV file here</p>
-              <p className="text-xs text-text-muted mt-0.5">Supports 21-column standard format (.csv, .xlsx)</p>
+              <p className="text-sm font-medium text-slate-900">Drag & drop your e-SAKSHI CSV file here</p>
+              <p className="text-xs text-slate-500 mt-0.5">Supports 21-column standard format (.csv, .xlsx)</p>
             </div>
             <Button variant="outline" size="sm" onClick={handleSimulateIngest} disabled={uploading}>
               {uploading ? <Spinner className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
@@ -57,18 +57,18 @@ export function IngestPage() {
         </Card>
 
         <Card className="space-y-4">
-          <h3 className="text-base font-semibold text-white flex items-center gap-2">
-            <History className="w-4 h-4 text-secondary" />
+          <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+            <History className="w-4 h-4 text-blue-600" />
             <span>Ingest Audit Log</span>
           </h3>
           <div className="space-y-3 text-xs">
-            <div className="p-3 rounded-lg bg-surface border border-white/5 space-y-1">
+            <div className="p-3 rounded-lg bg-slate-50 border border-white/5 space-y-1">
               <div className="flex justify-between font-medium">
-                <span className="text-white">Batch #2026-08</span>
+                <span className="text-slate-900">Batch #2026-08</span>
                 <span className="text-emerald-400">200 Works</span>
               </div>
-              <p className="text-text-muted">Status: Validated & Seeded</p>
-              <p className="text-[10px] text-text-muted font-mono">Checksum: 36d0921cdf469500862fc361292fa150...</p>
+              <p className="text-slate-500">Status: Validated & Seeded</p>
+              <p className="text-[10px] text-slate-500 font-mono">Checksum: 36d0921cdf469500862fc361292fa150...</p>
             </div>
           </div>
         </Card>

@@ -30,25 +30,25 @@ export function PublicListPage() {
   return (
     <div className="space-y-6">
       <div className="p-6 rounded-2xl bg-gradient-to-r from-secondary/20 via-surface to-purple-500/10 border border-secondary/30 space-y-2">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-secondary/20 text-secondary border border-secondary/30">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-blue-600/20 text-blue-600 border border-secondary/30">
           <Globe className="w-3.5 h-3.5" />
           <span>National Citizen Transparency Portal</span>
         </div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">Public Infrastructure Projects</h1>
-        <p className="text-sm text-text-muted max-w-2xl">
+        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Public Infrastructure Projects</h1>
+        <p className="text-sm text-slate-500 max-w-2xl">
           Search and monitor developmental assets sanctioned by your Member of Parliament under the MPLADS scheme.
         </p>
       </div>
 
       {/* Search Input */}
       <div className="relative max-w-md">
-        <Search className="absolute left-3 top-3 w-4 h-4 text-text-muted" />
+        <Search className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
         <input
           type="text"
           placeholder="Search community projects, locations..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="w-full bg-surface border border-border rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-text-muted focus:outline-none focus:border-secondary"
+          className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-secondary"
         />
       </div>
 
@@ -57,24 +57,24 @@ export function PublicListPage() {
           <Spinner className="w-8 h-8" />
         </div>
       ) : works.length === 0 ? (
-        <div className="py-16 text-center text-text-muted">No public works found.</div>
+        <div className="py-16 text-center text-slate-500">No public works found.</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {works.map(w => (
             <Card key={w.id} className="flex flex-col justify-between hover:border-white/20 transition-all p-5">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-secondary/10 text-secondary border border-secondary/20">
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200">
                     {w.category}
                   </span>
                   <StatusBadge status={w.status} />
                 </div>
 
-                <h3 className="text-base font-bold text-white line-clamp-2">{w.title}</h3>
+                <h3 className="text-base font-bold text-slate-900 line-clamp-2">{w.title}</h3>
 
-                <div className="space-y-1 text-xs text-text-muted">
+                <div className="space-y-1 text-xs text-slate-500">
                   <div className="flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-text-muted" />
+                    <MapPin className="w-3.5 h-3.5 text-slate-500" />
                     <span className="truncate">{w.location_name} &bull; {w.district_name}</span>
                   </div>
                 </div>
@@ -82,22 +82,22 @@ export function PublicListPage() {
                 {/* Progress bar */}
                 <div className="space-y-1 pt-2">
                   <div className="flex justify-between text-xs">
-                    <span className="text-text-muted">Physical Completion</span>
-                    <span className="text-white font-bold">{w.physical_progress_pct}%</span>
+                    <span className="text-slate-500">Physical Completion</span>
+                    <span className="text-slate-900 font-bold">{w.physical_progress_pct}%</span>
                   </div>
-                  <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden">
+                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                     <div
-                      className="bg-secondary h-full rounded-full"
+                      className="bg-blue-600 h-full rounded-full"
                       style={{ width: `${w.physical_progress_pct}%` }}
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 pt-4 border-t border-border/40 flex items-center justify-between">
+              <div className="mt-4 pt-4 border-t border-slate-200/40 flex items-center justify-between">
                 <div>
-                  <p className="text-[11px] text-text-muted">Sanctioned Amount</p>
-                  <p className="text-sm font-bold text-white">{formatCurrency(w.sanctioned_amount)}</p>
+                  <p className="text-[11px] text-slate-500">Sanctioned Amount</p>
+                  <p className="text-sm font-bold text-slate-900">{formatCurrency(w.sanctioned_amount)}</p>
                 </div>
 
                 <Link to={`/public/${w.id}`}>

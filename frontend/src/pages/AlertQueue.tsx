@@ -1,3 +1,3 @@
 export function AlertQueue() {
-  return <div className="p-4 text-white">Alert Queue Component</div>;
+  return <div className="p-4 text-slate-900">Alert Queue Component</div>;
 }

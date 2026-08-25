@@ -97,7 +97,7 @@ export function InspectionFormPage() {
       <div className="flex items-center gap-4">
         <button
           onClick={() => navigate('/inspection')}
-          className="p-2 rounded-lg hover:bg-white/5 text-text-muted hover:text-white transition-colors cursor-pointer"
+          className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -109,14 +109,14 @@ export function InspectionFormPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="space-y-4">
-          <h3 className="text-base font-semibold text-white">Target Work Asset</h3>
+          <h3 className="text-base font-semibold text-slate-900">Target Work Asset</h3>
 
           <div className="space-y-2">
-            <label className="text-xs font-medium text-text-muted">Select Project Work</label>
+            <label className="text-xs font-medium text-slate-500">Select Project Work</label>
             <select
               value={selectedWorkId}
               onChange={e => setSelectedWorkId(e.target.value)}
-              className="w-full bg-surface border border-border rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-secondary cursor-pointer"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm text-slate-900 focus:outline-none focus:border-secondary cursor-pointer"
             >
               {works.map(w => (
                 <option key={w.id} value={w.id}>
@@ -128,21 +128,21 @@ export function InspectionFormPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-text-muted">Inspector Name</label>
+              <label className="text-xs font-medium text-slate-500">Inspector Name</label>
               <input
                 type="text"
                 value={inspectorName}
                 onChange={e => setInspectorName(e.target.value)}
-                className="w-full bg-surface border border-border rounded-lg p-2 text-sm text-white focus:outline-none focus:border-secondary"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm text-slate-900 focus:outline-none focus:border-secondary"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-text-muted">Overall Finding Status</label>
+              <label className="text-xs font-medium text-slate-500">Overall Finding Status</label>
               <select
                 value={overallStatus}
                 onChange={e => setOverallStatus(e.target.value as any)}
-                className="w-full bg-surface border border-border rounded-lg p-2 text-sm text-white focus:outline-none focus:border-secondary cursor-pointer"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm text-slate-900 focus:outline-none focus:border-secondary cursor-pointer"
               >
                 <option value="SATISFACTORY">Satisfactory & Conforming</option>
                 <option value="DEFECTS_FOUND">Defects / Variances Found</option>
@@ -152,11 +152,11 @@ export function InspectionFormPage() {
             </div>
           </div>
 
-          <div className="p-3 rounded-lg bg-surface border border-white/5 flex items-center justify-between text-xs">
+          <div className="p-3 rounded-lg bg-slate-50 border border-white/5 flex items-center justify-between text-xs">
             <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-secondary" />
-              <span className="text-text-muted">GPS Coordinates:</span>
-              <strong className="text-white font-mono">{lat.toFixed(4)}, {lng.toFixed(4)}</strong>
+              <MapPin className="w-4 h-4 text-blue-600" />
+              <span className="text-slate-500">GPS Coordinates:</span>
+              <strong className="text-slate-900 font-mono">{lat.toFixed(4)}, {lng.toFixed(4)}</strong>
             </div>
             <span className="text-emerald-400 font-medium">GPS Geotagged</span>
           </div>
@@ -164,16 +164,16 @@ export function InspectionFormPage() {
 
         {/* 8-Point Checklist */}
         <Card className="space-y-4">
-          <h3 className="text-base font-semibold text-white flex items-center gap-2">
-            <CheckSquare className="w-4 h-4 text-secondary" />
+          <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+            <CheckSquare className="w-4 h-4 text-blue-600" />
             <span>8-Point Physical Verification Checklist</span>
           </h3>
 
-          <div className="space-y-3 divide-y divide-border/30">
+          <div className="space-y-3 divide-y divide-slate-100">
             {CHECKLIST_ITEMS.map(item => (
               <label
                 key={item.id}
-                className="pt-3 flex items-start gap-3 text-xs text-white cursor-pointer hover:text-secondary transition-colors"
+                className="pt-3 flex items-start gap-3 text-xs text-slate-900 cursor-pointer hover:text-blue-600 transition-colors"
               >
                 <input
                   type="checkbox"
@@ -184,7 +184,7 @@ export function InspectionFormPage() {
                       [item.id]: e.target.checked,
                     })
                   }
-                  className="mt-0.5 rounded border-border text-secondary focus:ring-secondary cursor-pointer"
+                  className="mt-0.5 rounded border-slate-200 text-blue-600 focus:ring-secondary cursor-pointer"
                 />
                 <span>{item.text}</span>
               </label>
@@ -195,13 +195,13 @@ export function InspectionFormPage() {
         {/* Notes & Submit */}
         <Card className="space-y-4">
           <div className="space-y-2">
-            <label className="text-xs font-medium text-text-muted">Field Observation Notes</label>
+            <label className="text-xs font-medium text-slate-500">Field Observation Notes</label>
             <textarea
               rows={3}
               value={notes}
               onChange={e => setNotes(e.target.value)}
               placeholder="Enter specific on-site observations, material checks, or contractor feedback..."
-              className="w-full bg-surface border border-border rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-secondary"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-900 focus:outline-none focus:border-secondary"
             />
           </div>
 

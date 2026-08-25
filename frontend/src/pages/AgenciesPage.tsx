@@ -39,7 +39,7 @@ export function AgenciesPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-border/50 text-text-muted bg-surface/50">
+              <tr className="border-b border-slate-200/50 text-slate-500 bg-slate-50/50">
                 <th className="py-3.5 px-4">Implementing Agency</th>
                 <th className="py-3.5 px-4">Agency Type</th>
                 <th className="py-3.5 px-4">Assigned Projects</th>
@@ -48,20 +48,20 @@ export function AgenciesPage() {
                 <th className="py-3.5 px-4">Completion Rate</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border/30 text-white">
+            <tbody className="divide-y divide-slate-100 text-slate-900">
               {[
                 { name: 'Public Works Department (PWD)', type: 'State PWD', total: 78, done: 36, amount: 184500000, rate: '46.1%' },
                 { name: 'Rural Development Agency (DRDA)', type: 'DRDA', total: 64, done: 32, amount: 122000000, rate: '50.0%' },
                 { name: 'Municipal Corporation', type: 'Urban Local Body', total: 38, done: 14, amount: 89000000, rate: '36.8%' },
                 { name: 'Irrigation & Flood Control Dept', type: 'Line Department', total: 20, done: 8, amount: 45000000, rate: '40.0%' },
               ].map((row, i) => (
-                <tr key={i} className="hover:bg-white/[0.02] transition-colors">
-                  <td className="py-3 px-4 font-bold text-white">{row.name}</td>
-                  <td className="py-3 px-4 text-text-muted">{row.type}</td>
+                <tr key={i} className="hover:bg-slate-50 transition-colors">
+                  <td className="py-3 px-4 font-bold text-slate-900">{row.name}</td>
+                  <td className="py-3 px-4 text-slate-500">{row.type}</td>
                   <td className="py-3 px-4 font-mono">{row.total}</td>
                   <td className="py-3 px-4 font-mono text-emerald-400">{row.done}</td>
                   <td className="py-3 px-4 font-bold">{formatCurrency(row.amount)}</td>
-                  <td className="py-3 px-4 font-bold text-secondary">{row.rate}</td>
+                  <td className="py-3 px-4 font-bold text-blue-600">{row.rate}</td>
                 </tr>
               ))}
             </tbody>

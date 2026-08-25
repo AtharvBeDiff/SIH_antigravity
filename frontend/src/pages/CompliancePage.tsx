@@ -36,28 +36,28 @@ export function CompliancePage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="space-y-4">
-          <h3 className="text-base font-semibold text-white">SC/ST Earmarked Infrastructure (R-016)</h3>
-          <p className="text-xs text-text-muted">
+          <h3 className="text-base font-semibold text-slate-900">SC/ST Earmarked Infrastructure (R-016)</h3>
+          <p className="text-xs text-slate-500">
             Under MPLADS guidelines, Members of Parliament must recommend works costing at least 15% of their annual entitlement for areas inhabited by SC population and 7.5% for ST population.
           </p>
 
           <div className="space-y-3 pt-2">
-            <div className="p-3 rounded-lg bg-surface border border-white/5 space-y-1.5">
+            <div className="p-3 rounded-lg bg-slate-50 border border-white/5 space-y-1.5">
               <div className="flex justify-between text-xs">
-                <span className="text-white font-medium">SCSP Component (Target: 15%)</span>
+                <span className="text-slate-900 font-medium">SCSP Component (Target: 15%)</span>
                 <span className="text-emerald-400 font-bold">16.4% COMPLIANT</span>
               </div>
-              <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden">
+              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                 <div className="bg-emerald-400 h-full w-[82%]" />
               </div>
             </div>
 
-            <div className="p-3 rounded-lg bg-surface border border-white/5 space-y-1.5">
+            <div className="p-3 rounded-lg bg-slate-50 border border-white/5 space-y-1.5">
               <div className="flex justify-between text-xs">
-                <span className="text-white font-medium">TSP Component (Target: 7.5%)</span>
+                <span className="text-slate-900 font-medium">TSP Component (Target: 7.5%)</span>
                 <span className="text-emerald-400 font-bold">8.1% COMPLIANT</span>
               </div>
-              <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden">
+              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                 <div className="bg-emerald-400 h-full w-[75%]" />
               </div>
             </div>
@@ -65,22 +65,22 @@ export function CompliancePage() {
         </Card>
 
         <Card className="space-y-4">
-          <h3 className="text-base font-semibold text-white">Physical Inspection Mandate (R-017)</h3>
-          <p className="text-xs text-text-muted">
+          <h3 className="text-base font-semibold text-slate-900">Physical Inspection Mandate (R-017)</h3>
+          <p className="text-xs text-slate-500">
             District Authorities must physically inspect at least 10% of works under implementation and 50% of all completed works annually.
           </p>
 
-          <div className="p-4 rounded-lg bg-surface border border-white/5 space-y-3">
+          <div className="p-4 rounded-lg bg-slate-50 border border-white/5 space-y-3">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-text-muted">Completed Works:</span>
-              <strong className="text-white">65 assets</strong>
+              <span className="text-slate-500">Completed Works:</span>
+              <strong className="text-slate-900">65 assets</strong>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-text-muted">Physically Inspected & Geotagged:</span>
+              <span className="text-slate-500">Physically Inspected & Geotagged:</span>
               <strong className="text-emerald-400">38 assets (58.5%)</strong>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-text-muted">Inspection Coverage Status:</span>
+              <span className="text-slate-500">Inspection Coverage Status:</span>
               <span className="px-2 py-0.5 rounded font-bold text-[11px] bg-emerald-500/20 text-emerald-400">
                 TARGET MET (≥50%)
               </span>

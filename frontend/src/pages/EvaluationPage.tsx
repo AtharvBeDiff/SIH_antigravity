@@ -68,13 +68,13 @@ export function EvaluationPage() {
 
       {/* Breakdown Table */}
       <Card className="space-y-4">
-        <h3 className="text-base font-semibold text-white">
+        <h3 className="text-base font-semibold text-slate-900">
           Performance Breakdown by Anomaly Category
         </h3>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-border/50 text-text-muted">
+              <tr className="border-b border-slate-200/50 text-slate-500">
                 <th className="py-3 px-4">Anomaly Class</th>
                 <th className="py-3 px-4">Planted Samples</th>
                 <th className="py-3 px-4">Detected</th>
@@ -83,7 +83,7 @@ export function EvaluationPage() {
                 <th className="py-3 px-4">F1 Score</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border/30 text-white">
+            <tbody className="divide-y divide-slate-100 text-slate-900">
               {[
                 { type: 'Cost Outlier (MAD Robust z-score)', planted: 24, detected: 22, p: 91.6, r: 91.6, f1: 91.6 },
                 { type: 'Duplicate Work (2-of-3 Corroboration)', planted: 18, detected: 17, p: 94.4, r: 94.4, f1: 94.4 },
@@ -92,13 +92,13 @@ export function EvaluationPage() {
                 { type: 'Stalled / No Payment in 180 Days', planted: 26, detected: 24, p: 92.3, r: 92.3, f1: 92.3 },
                 { type: 'Missing Utilisation Certificate', planted: 15, detected: 14, p: 93.3, r: 93.3, f1: 93.3 },
               ].map((row, i) => (
-                <tr key={i} className="hover:bg-white/[0.02] transition-colors">
-                  <td className="py-3 px-4 font-semibold text-white">{row.type}</td>
+                <tr key={i} className="hover:bg-slate-50 transition-colors">
+                  <td className="py-3 px-4 font-semibold text-slate-900">{row.type}</td>
                   <td className="py-3 px-4 font-mono">{row.planted}</td>
                   <td className="py-3 px-4 font-mono text-emerald-400">{row.detected}</td>
                   <td className="py-3 px-4 font-mono">{row.p}%</td>
                   <td className="py-3 px-4 font-mono">{row.r}%</td>
-                  <td className="py-3 px-4 font-mono font-bold text-secondary">{row.f1}%</td>
+                  <td className="py-3 px-4 font-mono font-bold text-blue-600">{row.f1}%</td>
                 </tr>
               ))}
             </tbody>
