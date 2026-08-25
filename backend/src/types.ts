@@ -189,7 +189,7 @@ export interface Work {
   second_installment: number | null;
 
   // Dates (YYYY-MM-DD)
-  sanction_date: string;
+  sanction_date: string | null;
   recommended_date: string | null;
   completion_target_date: string | null;
   actual_completion_date: string | null;
@@ -378,7 +378,7 @@ export interface PublicWork {
   physical_progress_pct: number;
   sanctioned_amount: number;
   expenditure: number;
-  sanction_date: string;
+  sanction_date: string | null;
   actual_completion_date: string | null;
   district_name: string;
   constituency_name: string;
@@ -424,6 +424,44 @@ export interface DashboardStats {
   works_by_status: Record<WorkStatus, number>;
   works_by_category: Record<string, number>;
   trend: TrendPoint[];
+}
+
+export interface SLAStats {
+  total: number;
+  breached: number;
+  atRisk: number;
+  safe: number;
+  avgDays: number;
+}
+
+export interface QuotaStats {
+  totalSanctioned: number;
+  scspSanctioned: number;
+  tspSanctioned: number;
+  scspPercentage: number;
+  tspPercentage: number;
+  scspTarget: number;
+  tspTarget: number;
+}
+
+export interface HeatmapPoint {
+  date: string;
+  count: number;
+  worksSanctioned: number;
+  worksCompleted: number;
+  payments: number;
+  inspections: number;
+}
+
+export interface HealthReport {
+  id: string;
+  work_id: string;
+  reported_by: string;
+  report_date: string;
+  progress_pct: number;
+  evidence_image_key?: string;
+  remarks?: string;
+  created_at: string;
 }
 
 export interface TrendPoint {

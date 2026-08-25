@@ -130,7 +130,20 @@ function generateData() {
     const expenditure = status === 'COMPLETED' ? sanctioned_amount : (status === 'IN_PROGRESS' ? randInt(10000, sanctioned_amount) : 0);
     const title = `Work ${i+1}: ${category} Project at Location ${i}`;
     
-    statements.push(`INSERT INTO works (id, esakshi_work_id, district_id, constituency_id, agency_id, mp_name, title, description, category, location_name, status, physical_progress_pct, sanctioned_amount, expenditure, sanction_date) VALUES ('${id}', 'ESK-${1000+i}', '${dId}', '${cId}', '${agencyId}', 'Hon. Member of Parliament', '${escapeSql(title)}', 'Synthetic work description', '${category}', 'Location ${i}', '${status}', ${status === 'COMPLETED' ? 100 : randInt(0, 99)}, ${sanctioned_amount}, ${expenditure}, '2025-01-01') ON CONFLICT (id) DO NOTHING;`);
+    // SLA simulation: Proposal received a random time between 1 and 60 days ago
+    const recommendedDate = new Date();
+    recommendedDate.setDate(recommendedDate.getDate() - randInt(1, 60));
+    const recDateStr = recommendedDate.toISOString().split('T')[0];
+
+    // If it's NOT PROPOSED, give it a sanction date that is after the recommended date
+    let sanctionDateStr = 'NULL';
+    if (status !== 'PROPOSED') {
+        const sanctionDate = new Date(recommendedDate);
+        sanctionDate.setDate(sanctionDate.getDate() + randInt(5, 50));
+        sanctionDateStr = `'${sanctionDate.toISOString().split('T')[0]}'`;
+    }
+
+    statements.push(`INSERT INTO works (id, esakshi_work_id, district_id, constituency_id, agency_id, mp_name, title, description, category, location_name, status, physical_progress_pct, sanctioned_amount, expenditure, recommended_date, sanction_date) VALUES ('${id}', 'ESK-${1000+i}', '${dId}', '${cId}', '${agencyId}', 'Hon. Member of Parliament', '${escapeSql(title)}', 'Synthetic work description', '${category}', 'Location ${i}', '${status}', ${status === 'COMPLETED' ? 100 : randInt(0, 99)}, ${sanctioned_amount}, ${expenditure}, '${recDateStr}', ${sanctionDateStr}) ON CONFLICT (id) DO NOTHING;`);
   }
   statements.push('');
 

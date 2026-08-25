@@ -9,6 +9,7 @@ import {
   Menu,
   Building2,
   Users,
+  Clock,
   ShieldCheck,
   Sparkles,
   Award,
@@ -16,6 +17,7 @@ import {
   FileSpreadsheet,
   Globe,
   Layers,
+  Activity,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../../lib/utils';
@@ -37,6 +39,8 @@ export function MainLayout() {
         { name: 'Agencies', path: '/agencies', icon: Building2 },
         { name: 'Compliance', path: '/compliance', icon: ShieldCheck },
         { name: 'District Digest', path: '/digest', icon: FileText },
+        { name: '45-Day SLA Engine', path: '/sla', icon: Clock },
+        { name: 'Activity Heatmap', path: '/heatmap', icon: Activity },
       ],
     },
     {

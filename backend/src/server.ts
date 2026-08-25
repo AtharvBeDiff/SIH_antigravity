@@ -27,6 +27,10 @@ import dashboardRouter from './routers/dashboard.ts';
 import digestRouter from './routers/digest.ts';
 import insightRouter from './routers/insight.ts';
 import publicRouter from './routers/public.ts';
+import slaRouter from './routers/sla.ts';
+import quotaRouter from './routers/quota.ts';
+import heatmapRouter from './routers/heatmap.ts';
+import healthReportsRouter from './routers/health_reports.ts';
 
 // ─── App setup ───────────────────────────────────────────────
 
@@ -76,6 +80,10 @@ app.use('/api/digest', digestRouter);
 app.use('/api/audit', auditRouter);
 app.use('/api/insight', insightRouter);
 app.use('/api/public', publicRouter);
+app.use('/api/sla', slaRouter);
+app.use('/api/quota', quotaRouter);
+app.use('/api/heatmap', heatmapRouter);
+app.use('/api/health_reports', healthReportsRouter);
 
 // ─── Error middleware ────────────────────────────────────────
 // Express 5 auto-forwards async rejections here.

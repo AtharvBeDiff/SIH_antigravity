@@ -86,5 +86,31 @@ export const api = {
   },
   analyze: {
     run: () => request<any>('/analyze', { method: 'POST', body: '{}' }),
+  },
+  sla: {
+    stats: () => request<any>('/sla/stats'),
+    evaluate: () => request<any>('/sla/evaluate', { method: 'POST', body: '{}' }),
+  },
+  quota: {
+    get: (params?: Record<string, string>) => {
+      const q = params ? '?' + new URLSearchParams(params).toString() : '';
+      return request<any>(`/quota${q}`);
+    },
+  },
+  heatmap: {
+    get: (params?: Record<string, string>) => {
+      const q = params ? '?' + new URLSearchParams(params).toString() : '';
+      return request<any>(`/heatmap${q}`);
+    },
+  },
+  healthReports: {
+    get: (params?: Record<string, string>) => {
+      const q = params ? '?' + new URLSearchParams(params).toString() : '';
+      return request<any>(`/health_reports${q}`);
+    },
+    post: (data: any) => request<any>('/health_reports', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   }
 };

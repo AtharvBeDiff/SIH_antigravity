@@ -5,27 +5,30 @@ import { StatCard, Card, PageHeader, Button, SeverityChip } from '../components/
 import { formatCurrency } from '../lib/utils';
 import { AlertCircle, ArrowUpRight, BarChart3, CheckCircle, Clock, FileSpreadsheet, Layers, ShieldCheck, TrendingUp, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import type { DashboardStats, Alert, Work } from '../types';
+import type { DashboardStats, Alert, Work, QuotaStats } from '../types';
 
 export function OverviewPage() {
   const { selectedDistrict, setSelectedDistrict, districts } = useAppState();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentAlerts, setRecentAlerts] = useState<Alert[]>([]);
   const [recentWorks, setRecentWorks] = useState<Work[]>([]);
+  const [quotaStats, setQuotaStats] = useState<QuotaStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [dashData, alertsData, worksData] = await Promise.all([
+      const [dashData, alertsData, worksData, quotaData] = await Promise.all([
         api.dashboard.get(selectedDistrict ? { district_id: selectedDistrict } : undefined),
         api.alerts.list(selectedDistrict ? { district_id: selectedDistrict, page_size: '5' } : { page_size: '5' }),
         api.works.list(selectedDistrict ? { district_id: selectedDistrict, page_size: '5' } : { page_size: '5' }),
+        api.quota.get(selectedDistrict ? { district_id: selectedDistrict } : undefined),
       ]);
       setStats(dashData);
       setRecentAlerts(alertsData.data || []);
       setRecentWorks(worksData.data || []);
+      setQuotaStats(quotaData);
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
@@ -119,6 +122,55 @@ export function OverviewPage() {
           variant={(stats?.open_alerts ?? 0) > 0 ? 'critical' : 'default'}
         />
       </div>
+
+      {/* SC/ST Quota Widget */}
+      <Card className="p-6 bg-surface/50">
+        <div className="flex items-center gap-2 mb-4">
+          <Layers className="w-5 h-5 text-secondary" />
+          <h3 className="text-base font-semibold text-white">Statutory SC/ST Quota Utilization</h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-text-muted">SC Quota ({quotaStats?.scspTarget ?? 15}% Target)</span>
+              <span className={`font-medium ${
+                (quotaStats?.scspPercentage ?? 0) >= (quotaStats?.scspTarget ?? 15) ? 'text-emerald-400' : 'text-amber-400'
+              }`}>
+                {(quotaStats?.scspPercentage ?? 0).toFixed(1)}%
+              </span>
+            </div>
+            <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden">
+              <div
+                className={`h-full ${(quotaStats?.scspPercentage ?? 0) >= (quotaStats?.scspTarget ?? 15) ? 'bg-emerald-400' : 'bg-amber-400'}`}
+                style={{ width: `${Math.min(quotaStats?.scspPercentage ?? 0, 100)}%` }}
+              />
+            </div>
+            <p className="text-xs text-text-muted text-right">
+              {formatCurrency(quotaStats?.scspSanctioned ?? 0)} / {formatCurrency(quotaStats?.totalSanctioned ?? 0)}
+            </p>
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-text-muted">ST Quota ({quotaStats?.tspTarget ?? 7.5}% Target)</span>
+              <span className={`font-medium ${
+                (quotaStats?.tspPercentage ?? 0) >= (quotaStats?.tspTarget ?? 7.5) ? 'text-emerald-400' : 'text-amber-400'
+              }`}>
+                {(quotaStats?.tspPercentage ?? 0).toFixed(1)}%
+              </span>
+            </div>
+            <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden">
+              <div
+                className={`h-full ${(quotaStats?.tspPercentage ?? 0) >= (quotaStats?.tspTarget ?? 7.5) ? 'bg-emerald-400' : 'bg-amber-400'}`}
+                style={{ width: `${Math.min(quotaStats?.tspPercentage ?? 0, 100)}%` }}
+              />
+            </div>
+            <p className="text-xs text-text-muted text-right">
+              {formatCurrency(quotaStats?.tspSanctioned ?? 0)} / {formatCurrency(quotaStats?.totalSanctioned ?? 0)}
+            </p>
+          </div>
+        </div>
+      </Card>
 
       {/* The 19% Gap Insight Banner */}
       <Card className="border-secondary/20 bg-gradient-to-r from-secondary/10 via-surface/80 to-purple-500/10 p-6">

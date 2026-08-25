@@ -154,6 +154,42 @@ rules:
       - COMPLETED
     enabled: true
 
+  - id: R-018
+    name: Predictive Delay Velocity
+    description: >
+      Work is progressing too slowly relative to elapsed time and is predicted
+      to breach the timeline limit if current velocity continues.
+    severity: HIGH
+    category: TIMELINE
+    verification_status: PLATFORM_POLICY
+    params:
+      min_elapsed_months: 6
+      max_months: 24
+      min_velocity_ratio: 0.5
+    evidence_template: >
+      Work sanctioned on {{sanction_date}} ({{months_elapsed}} months ago).
+      Expected progress: {{expected_progress}}%, but actual is {{actual_progress}}%
+      (Velocity ratio: {{velocity_ratio}}).
+    applies_to_status:
+      - IN_PROGRESS
+    enabled: true
+
+  - id: R-019
+    name: Missing 10-Day Health Report
+    description: >
+      Work is missing its mandatory 10-day health report check-in, exceeding the 5-day grace period.
+    severity: MEDIUM
+    category: TIMELINE
+    verification_status: PLATFORM_POLICY
+    params:
+      report_interval_days: 10
+      grace_period_days: 5
+    evidence_template: >
+      No 10-day health report submitted in {{days_since_update}} days (grace period exceeded).
+    applies_to_status:
+      - IN_PROGRESS
+    enabled: true
+
   # ─── Duplicate & Integrity ───────────────────────────────
 
   - id: R-009

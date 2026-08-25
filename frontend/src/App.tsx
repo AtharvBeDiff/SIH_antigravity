@@ -9,6 +9,8 @@ import { WorkDetailPage } from './pages/WorkDetailPage';
 import { AgenciesPage } from './pages/AgenciesPage';
 import { CompliancePage } from './pages/CompliancePage';
 import { DigestPage } from './pages/DigestPage';
+import { SLAPage } from './pages/SLAPage';
+import { HeatmapPage } from './pages/HeatmapPage';
 import { RulesPage } from './pages/RulesPage';
 import { AuditPage } from './pages/AuditPage';
 import { IngestPage } from './pages/IngestPage';
@@ -35,6 +37,8 @@ function App() {
             <Route path="agencies" element={<AgenciesPage />} />
             <Route path="compliance" element={<CompliancePage />} />
             <Route path="digest" element={<DigestPage />} />
+            <Route path="sla" element={<SLAPage />} />
+            <Route path="heatmap" element={<HeatmapPage />} />
 
             {/* How It Decides & Rigor */}
             <Route path="rules" element={<RulesPage />} />

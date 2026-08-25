@@ -3,22 +3,29 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { PageHeader, Card, Button, StatusBadge, SeverityChip, Spinner } from '../components/ui';
 import { formatCurrency, formatDate } from '../lib/utils';
-import { AlertTriangle, ArrowLeft, Calendar, CheckCircle2, Download, FileText, IndianRupee, Layers, MapPin, ShieldAlert, User } from 'lucide-react';
-import type { Work, Alert, Payment, Document } from '../types';
+import { AlertTriangle, ArrowLeft, Calendar, Camera, CheckCircle2, Download, FileText, IndianRupee, Layers, MapPin, ShieldAlert, User } from 'lucide-react';
+import type { Work, Alert, Payment, Document, HealthReport } from '../types';
+import { HealthReportForm } from '../components/works/HealthReportForm';
 
 export function WorkDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [work, setWork] = useState<(Work & { alerts?: Alert[]; payments?: Payment[]; documents?: Document[] }) | null>(null);
+  const [healthReports, setHealthReports] = useState<HealthReport[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showReportForm, setShowReportForm] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     const loadWork = async () => {
       try {
         setLoading(true);
-        const data = await api.works.get(id);
-        setWork(data);
+        const [workData, healthReportsRes] = await Promise.all([
+          api.works.get(id),
+          api.healthReports.get({ work_id: id })
+        ]);
+        setWork(workData);
+        setHealthReports(healthReportsRes.data || []);
       } catch (err) {
         console.error('Failed to fetch work detail:', err);
       } finally {
@@ -133,6 +140,65 @@ export function WorkDetailPage() {
                 <p className="font-semibold text-white mt-0.5">{work.completion_target_date || 'Standard 24 Months'}</p>
               </div>
             </div>
+          </Card>
+
+          {/* 10-Day Health Reports */}
+          <Card className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                <Camera className="w-4 h-4 text-emerald-400" />
+                <span>10-Day Health Reports</span>
+              </h3>
+              <Button size="sm" onClick={() => setShowReportForm(true)} disabled={showReportForm}>
+                + New Report
+              </Button>
+            </div>
+
+            {showReportForm && (
+              <div className="mb-4">
+                <HealthReportForm
+                  workId={work.id}
+                  onCancel={() => setShowReportForm(false)}
+                  onSuccess={async () => {
+                    setShowReportForm(false);
+                    // Refresh data
+                    try {
+                      const [updatedWork, newReports] = await Promise.all([
+                        api.works.get(work.id),
+                        api.healthReports.get({ work_id: work.id })
+                      ]);
+                      setWork(updatedWork);
+                      setHealthReports(newReports.data || []);
+                    } catch (e) {
+                      console.error("Failed to refresh after report", e);
+                    }
+                  }}
+                />
+              </div>
+            )}
+
+            {healthReports.length === 0 ? (
+              <p className="text-xs text-text-muted py-4 text-center">No 10-day health reports have been filed yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {healthReports.map((hr) => (
+                  <div key={hr.id} className="p-3 bg-surface/50 border border-white/5 rounded-lg flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-medium text-white">{hr.progress_pct}% Completed</p>
+                      <p className="text-xs text-text-muted mt-0.5">Reported on {formatDate(hr.report_date)} by {hr.reported_by}</p>
+                      {hr.remarks && <p className="text-xs text-text-muted mt-2 italic">"{hr.remarks}"</p>}
+                    </div>
+                    <div className="text-right">
+                      {hr.evidence_image_key && (
+                        <div className="flex items-center gap-1 text-xs text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded">
+                          <CheckCircle2 className="w-3 h-3" /> Photo Attached
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
 
           {/* Payments & Disbursements Table */}

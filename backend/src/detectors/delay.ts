@@ -1,5 +1,5 @@
 /**
- * Delay & Stall Detectors (R-006, R-007, R-015)
+ * Delay & Stall Detectors (R-006, R-007, R-015, R-018, R-019)
  */
 
 import type { Work } from '../types.ts';
@@ -63,6 +63,52 @@ export function detectDelays(works: Work[]): AnomalyCandidate[] {
             reason_code: 'ON_HOLD_TOO_LONG',
             evidence_text: `Work has been on hold for ${holdDays} days (threshold: 120 days).`,
             confidence: Math.min(1.0, 0.5 + (holdDays / 200) * 0.5),
+          });
+        }
+      }
+    }
+    // 4. R-018: Predictive Delay Velocity
+    if (w.status === 'IN_PROGRESS' && w.sanction_date) {
+      const months = monthsBetween(w.sanction_date, today);
+      const minElapsedMonths = 6;
+      const maxMonths = 24;
+      const minVelocityRatio = 0.5;
+      
+      if (months >= minElapsedMonths && months < maxMonths) {
+        const expectedProgress = Math.min((months / maxMonths) * 100, 100);
+        const actualProgress = w.physical_progress_pct ?? 0;
+        const velocityRatio = expectedProgress > 0 ? actualProgress / expectedProgress : 1;
+        
+        if (velocityRatio < minVelocityRatio) {
+          candidates.push({
+            work_id: w.id,
+            rule_id: 'R-018',
+            origin_id: `velocity_${w.id}`,
+            severity: 'HIGH',
+            severity_rank: 2,
+            reason_code: 'DELAY_PREDICTED',
+            evidence_text: `Work sanctioned on ${w.sanction_date} (${months.toFixed(1)} months ago). Expected progress: ${expectedProgress.toFixed(1)}%, but actual is ${actualProgress.toFixed(1)}% (Velocity ratio: ${velocityRatio.toFixed(2)}).`,
+            confidence: Math.min(1.0, 0.4 + (1 - velocityRatio)), // lower velocity = higher confidence
+          });
+        }
+      }
+    }
+    
+    // 5. R-019: Missing 10-Day Health Report
+    if (w.status === 'IN_PROGRESS' && (w.physical_progress_pct ?? 0) < 100) {
+      const refDate = w.updated_at ? w.updated_at.slice(0, 10) : w.sanction_date;
+      if (refDate) {
+        const daysSinceUpdate = daysBetween(refDate, today);
+        if (daysSinceUpdate >= 15) { // 10 days + 5 days grace
+          candidates.push({
+            work_id: w.id,
+            rule_id: 'R-019',
+            origin_id: `missing_report_${w.id}`,
+            severity: 'MEDIUM',
+            severity_rank: 3,
+            reason_code: 'MISSING_HEALTH_REPORT',
+            evidence_text: `No 10-day health report submitted in ${daysSinceUpdate} days (grace period exceeded).`,
+            confidence: 0.9,
           });
         }
       }

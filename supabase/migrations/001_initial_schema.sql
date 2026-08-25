@@ -94,7 +94,7 @@ CREATE TABLE works (
   second_installment      DOUBLE PRECISION,
 
   -- Dates
-  sanction_date           DATE NOT NULL,
+  sanction_date           DATE,
   recommended_date        DATE,
   completion_target_date  DATE,
   actual_completion_date  DATE,
