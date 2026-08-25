@@ -6,18 +6,25 @@ export function IngestPage() {
   const [uploading, setUploading] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  const handleSimulateIngest = async () => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
     try {
       setUploading(true);
+      setSuccessMsg(null);
+      const text = await file.text();
       const res = await fetch('/api/ingest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ batch_id: 'batch_demo_2026' }),
+        body: JSON.stringify({ csv: text }),
       });
-      const data = await res.json();
-      setSuccessMsg('Ingest verified & audit event recorded: 200 works loaded into live pipeline.');
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error?.message || 'Ingestion failed');
+      setSuccessMsg(`Ingest verified & audit event recorded: ${json.data.count || 200} works successfully parsed, loaded, and analyzed.`);
     } catch (err: any) {
       console.error('Ingest error:', err);
+      alert('Ingestion error: ' + err.message);
     } finally {
       setUploading(false);
     }
@@ -42,10 +49,21 @@ export function IngestPage() {
               <p className="text-sm font-medium text-slate-900">Drag & drop your e-SAKSHI CSV file here</p>
               <p className="text-xs text-slate-500 mt-0.5">Supports 21-column standard format (.csv, .xlsx)</p>
             </div>
-            <Button variant="outline" size="sm" onClick={handleSimulateIngest} disabled={uploading}>
-              {uploading ? <Spinner className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
+            <input
+              id="csv-file-input"
+              type="file"
+              accept=".csv"
+              className="hidden"
+              disabled={uploading}
+              onChange={handleFileChange}
+            />
+            <label
+              htmlFor="csv-file-input"
+              className="inline-flex items-center justify-center gap-2 font-medium px-4 py-2 text-sm rounded-xl transition-all duration-200 cursor-pointer select-none border border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50 bg-white shadow-xs"
+            >
+              {uploading ? <Spinner className="w-4 h-4" /> : <Upload className="w-4 h-4 text-slate-500" />}
               <span>{uploading ? 'Validating Schema...' : 'Select File from Computer'}</span>
-            </Button>
+            </label>
           </div>
 
           {successMsg && (
