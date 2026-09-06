@@ -44,6 +44,32 @@ Seeding: apply `supabase/full_schema.sql`, then `npm run generate`, then load
 `backend/scripts/seed.ts`, which does not exist, so the documented setup path ended in
 `MODULE_NOT_FOUND`. That script has been deleted rather than repointed.
 
+### What to read, in order
+
+1. **This file**, top to bottom, before editing anything.
+2. **`CODE_CHANGES.md`** Part 2 — the feature backlog `P-01 … P-17`, in more detail than
+   Part 6 below reproduces. Part 1's 28 `F-` items are all complete; the remaining value
+   is in the `P-` items.
+3. **`RESEARCH_AUDIT.md`** — the scheme research and the primary-source answers behind
+   the thresholds, the published benchmarks and the `NEEDS_VERIFICATION` markers. Read it
+   when a number or a rule threshold is in question, not for orientation.
+4. **`docs/API_CONTRACT.md`** and **`docs/DATA_CONTRACT.md`** — only when you touch an
+   endpoint or the schema.
+
+Skip `README.md` and `docs/ARCHITECTURE.md`. Both are thin and superseded by this file.
+
+**`graphify-out/` is deliberately untracked and will be absent from a fresh clone.** It
+is a ~1.5 MB structural graph of the tree (1,441 nodes at the time of writing) plus
+`GRAPH_REPORT.md`, and it is *regenerable* rather than authored — which is why it is not
+in git. Its absence is not a missing file. Rebuild it with `graphify update .`, which is
+deterministic tree-sitter extraction with no LLM and no API key, then use
+`graphify query "<question>"` for orientation instead of grepping blind. Two known
+limits: the update path covers code only, so doc and prose changes need a full
+`/graphify --update` pass, and `.sql` files contribute nothing without
+`pip install "graphifyy[sql]"`, so migrations `001`–`011` are invisible to the graph
+until that is installed. Check freshness by comparing `built_at_commit` in
+`graphify-out/graph.json` against `git rev-parse HEAD`.
+
 ---
 
 ## PART 1 — WHAT THIS IS AND WHY
