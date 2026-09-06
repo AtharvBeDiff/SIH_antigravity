@@ -337,18 +337,23 @@ ON CONFLICT (id) DO UPDATE SET
   is_synthetic = EXCLUDED.is_synthetic,
   seed = EXCLUDED.seed;
 
--- ─── raw_sql helper function (for complex queries) ──────────
-
-CREATE OR REPLACE FUNCTION raw_sql(query TEXT, params TEXT DEFAULT '{}')
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-  result JSONB;
-BEGIN
-  EXECUTE format('SELECT jsonb_agg(row_to_json(t)) FROM (%s) t', query)
-  INTO result;
-  RETURN COALESCE(result, '[]'::JSONB);
-END;
-$$;
+-- ─── raw_sql: removed from this migration ───────────────────
+--
+-- A migration is history and is not normally rewritten. This one is, because what
+-- stood here was a `SECURITY DEFINER` function wrapping
+-- `EXECUTE format('... (%s) ...', query)` — arbitrary SQL executed as the function
+-- owner, reachable over Supabase's RPC endpoint, bypassing RLS. Its `params`
+-- argument was declared and never used, so nothing was parameterised despite the
+-- name. Leaving it in the migration and dropping it in a later one means every
+-- fresh database creates the sink and holds it open until the drop lands; a partial
+-- apply leaves it open indefinitely.
+--
+-- Rewriting is safe here specifically because nothing depends on it: no later
+-- migration references `raw_sql`, and no application code called it. `db.ts` had an
+-- `exec()` wrapper — removed with it — that no router, service or detector ever
+-- invoked. The end state of a replay is unchanged apart from the absent function.
+--
+-- Migration 011 drops it from databases that already applied this file before the
+-- rewrite. If a query genuinely will not fit the Supabase query builder, add a
+-- named function for that query with typed arguments; do not reintroduce a general
+-- SQL executor.

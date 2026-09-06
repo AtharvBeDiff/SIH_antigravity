@@ -3,67 +3,102 @@
  */
 
 import { Router } from 'express';
-import { getDb } from '../db.ts';
-import { evaluateProposalSLAs } from '../services/sla_engine.ts';
+import { actorOf } from '../http.ts';
+import {
+  assessSanctionSla,
+  evaluateProposalSLAs,
+  fetchUndecidedWorks,
+  getSlaThresholds,
+} from '../services/sla_engine.ts';
+import type { SLAStats } from '../types.ts';
 
 const router = Router();
-const SLA_LIMIT_DAYS = 45;
-const SLA_WARNING_DAYS = 35;
 
-/** GET /sla/stats — Returns aggregated SLA statistics */
+/**
+ * GET /sla/stats — aggregated sanction-decision SLA statistics.
+ *
+ * This endpoint used to be a second implementation of the clause: it carried its
+ * own `SLA_LIMIT_DAYS = 45` / `SLA_WARNING_DAYS = 35`, so a YAML edit moved the
+ * alerts without moving this tile, and it selected `status = 'PROPOSED'` — a value
+ * absent from `WORK_STATUSES`, so on canonical data it matched nothing and this
+ * screen reported zeros while the queue filled with breach alerts. It now shares
+ * `assessSanctionSla` with the alerting path, so the two cannot disagree.
+ */
 router.get('/stats', async (_req, res) => {
-  const db = getDb();
+  const thresholds = getSlaThresholds();
+  const works = await fetchUndecidedWorks();
+  const now = new Date();
 
-  const { data: proposedWorks, error } = await db
-    .from('works')
-    .select('id, recommended_date')
-    .eq('status', 'PROPOSED');
-
-  if (error) throw new Error(`Failed to fetch proposed works: ${error.message}`);
-
-  const works = proposedWorks ?? [];
   let breached = 0;
   let atRisk = 0;
   let safe = 0;
-  let totalDays = 0;
+  let rejected = 0;
+  let notTrackable = 0;
 
-  const now = new Date();
+  // Averaged over the works that actually have a measurable age. The previous
+  // version divided `totalDays` by `works.length` while skipping undated works in
+  // the numerator, so every work missing a recommendation date pulled the reported
+  // average toward zero.
+  let totalDays = 0;
+  let measured = 0;
 
   for (const work of works) {
-    if (!work.recommended_date) continue;
-
-    const recDate = new Date(work.recommended_date);
-    const diffTime = Math.abs(now.getTime() - recDate.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    totalDays += diffDays;
-
-    if (diffDays > SLA_LIMIT_DAYS) {
-      breached++;
-    } else if (diffDays > SLA_WARNING_DAYS) {
-      atRisk++;
-    } else {
-      safe++;
+    const { outcome, days_pending } = assessSanctionSla(work, thresholds, now);
+    switch (outcome) {
+      case 'BREACHED': breached++; break;
+      case 'AT_RISK': atRisk++; break;
+      case 'WITHIN_SLA': safe++; break;
+      case 'REJECTED_DECISION_DATE_UNKNOWN': rejected++; break;
+      case 'NOT_TRACKABLE': notTrackable++; break;
+    }
+    if (days_pending !== null && days_pending >= 0) {
+      totalDays += days_pending;
+      measured++;
     }
   }
 
-  const avgDays = works.length > 0 ? Math.round(totalDays / works.length) : 0;
+  const stats: SLAStats = {
+    total: works.length,
+    breached,
+    atRisk,
+    safe,
+    rejected,
+    notTrackable,
+    // null, not 0, when nothing is measurable: 0 reads as "decisions are
+    // instantaneous", which is the opposite of "we cannot tell".
+    avgDays: measured > 0 ? Math.round(totalDays / measured) : null,
+    measuredCount: measured,
+    limitDays: thresholds.limitDays,
+    warningDays: thresholds.warningDays,
+  };
 
-  res.json({
-    data: {
-      total: works.length,
-      breached,
-      atRisk,
-      safe,
-      avgDays,
-    }
-  });
+  res.json({ data: stats });
 });
 
-/** POST /sla/evaluate — Manually triggers the SLA engine to generate alerts */
-router.post('/evaluate', async (_req, res) => {
-  const alerts = await evaluateProposalSLAs();
-  res.json({ message: 'SLA evaluation complete', alertsGenerated: alerts.length });
+/**
+ * POST /sla/evaluate — run the sanction-decision SLA engine and persist its alerts.
+ *
+ * The actor is passed through so the audit entry names whoever triggered the run
+ * rather than attributing it to `system`. The engine writes to `alerts`, and an
+ * unattributed mutation of the triage queue is exactly what the ledger exists to
+ * prevent.
+ *
+ * No try/catch: Express 5 forwards the rejection to the error middleware. The engine
+ * now throws when the upsert fails, and that has to reach the caller — this endpoint
+ * used to answer `alertsGenerated: 12` for a run that persisted nothing.
+ */
+router.post('/evaluate', async (req, res) => {
+  const alerts = await evaluateProposalSLAs(actorOf(req));
+  // `upserted`, not `generated`: some of these rows already existed and were
+  // recomputed in place. The old name read as "12 new alerts appeared", which
+  // overstates a run that re-evaluated twelve known ones.
+  res.json({
+    data: {
+      alerts_upserted: alerts.length,
+      breached: alerts.filter((a) => a.reason_code === 'SLA_BREACHED').length,
+      at_risk: alerts.filter((a) => a.reason_code === 'SLA_AT_RISK').length,
+    },
+  });
 });
 
 export default router;

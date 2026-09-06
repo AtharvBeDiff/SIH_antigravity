@@ -66,24 +66,53 @@ export function paging(req: Request): PagingParams {
 // ─── Actor extraction ────────────────────────────────────────
 
 /**
- * Extracts the acting user's ID from the request.
- * In DEMO_MODE, falls back to 'demo-officer'.
+ * The name recorded as the actor for an audited mutation.
+ *
+ * **This is not authentication, and it is not authorisation.** It reads a name the
+ * caller supplies and returns it. Nothing here verifies that the caller is who the
+ * name says, and nothing anywhere checks what that name is allowed to do — there are
+ * no roles, no permissions, and no per-district scoping. Any caller who can reach the
+ * API can act as any officer, and `db.ts` connects with the service-role key, which
+ * bypasses every RLS policy in the schema.
+ *
+ * That matters more here than it would in most systems, because the audit ledger's
+ * whole claim is *who did what*. The chain is genuinely tamper-evident — you cannot
+ * alter a recorded entry without detection — but the actor named in an entry is only
+ * as trustworthy as the header it came from, which is to say not at all. The ledger
+ * proves the record has not been edited since it was written. It does not prove the
+ * record was true when written.
+ *
+ * A `Bearer` token used to be read and then dropped on the floor here, under a
+ * comment saying production would decode the JWT. That was the most misleading part:
+ * a reader skimming the function saw JWT handling and concluded the platform
+ * authenticated its users. Nothing was decoded, nothing was verified, and the
+ * `x-user-id` fallback below was always the real path. The token is no longer read at
+ * all, so the code does not imply a check it does not perform.
+ *
+ * To close this, in order: verify the Supabase JWT signature and take the subject
+ * from its claims; replace the service-role connection with a per-request client
+ * carrying the caller's token so RLS applies; and add a role check for the mutating
+ * endpoints. Until all three are done, DRISHTI must not be described as having
+ * role-based access control.
+ *
+ * @see docs/API_CONTRACT.md §11
  */
 export function actorOf(req: Request): string {
-  // Check for Supabase JWT user info
-  const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith('Bearer ')) {
-    // In production, decode JWT and extract user ID
-    // For now, use a header-based approach
-  }
-  // Check custom header (set by auth middleware)
+  // A caller-supplied name, trusted as given. Forgeable by anyone who can set a
+  // header, which is anyone who can call the API.
   const userId = req.headers['x-user-id'];
   if (typeof userId === 'string' && userId) return userId;
 
-  // Demo mode fallback
+  // Demo fallback. The 401 below is not an access control either — it rejects a
+  // request that named nobody, not a request from someone unauthorised.
   if (process.env['DEMO_MODE'] === 'true') return 'demo-officer';
 
-  throw new ApiError(401, 'UNAUTHORIZED', 'No authenticated user');
+  throw new ApiError(
+    401,
+    'NO_ACTOR',
+    'No actor supplied. Set the x-user-id header, or run with DEMO_MODE=true. ' +
+      'Note that this is an attribution requirement, not authentication.',
+  );
 }
 
 // ─── Body validation ─────────────────────────────────────────

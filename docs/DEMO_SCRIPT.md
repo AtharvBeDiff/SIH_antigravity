@@ -1,12 +1,12 @@
 # MPLADS Insight & Integrity Platform — 4-Minute Golden Demo Script
 
-> **Goal**: Guide judges through a flawless, end-to-end demonstration of the platform's core innovations: the 19.24% gap insight, explainable algorithmic triage, the tamper-evident hash ledger, empirical evaluation metrics, and citizen transparency.
+> **Goal**: Guide judges through a flawless, end-to-end demonstration of the platform's core innovations: the delivery gap between sanction and completion, explainable algorithmic triage, the tamper-evident hash ledger, empirical evaluation metrics, and citizen transparency.
 
 ---
 
 ### Minute 1: The Core Governance Challenge & Overview
 1. **Open Overview Page (`http://localhost:5173/`)**:
-   - Highlight the **19.24% Gap Insight Card**: Explain that historical MoSPI data proves only 19.24% of sanctioned capital turns into completed assets in timely cycles.
+   - Highlight the **Value Completion** and **Physical Completion** cards against the published benchmarks: **50.71% by value** and **61.88% by count** (Standing Committee on Rural Development, 1 Apr 2023 – 22 Jan 2026 — ₹3,387.38 Cr completed of ₹6,680.29 Cr sanctioned; 69,061 of 1,11,600 works). Say both numbers, and say why they differ: the works that complete are systematically cheaper than the works that stall, so an eleven-point spread between the two bases *is* the finding, not a rounding artefact. Quoting one figure against the other's denominator is the mistake this platform exists to stop making.
    - Point to the live telemetry cards: Sanctioned Capital, Physical vs. Value Completion, and Active Risk Alerts.
    - Demonstrate the **District Filter**: Switch between Delhi North, South, East, and West districts to show localized performance telemetry.
 
@@ -38,8 +38,23 @@
 
 ### Minute 4: Rigor, Field PWA & Citizen Transparency
 1. **Navigate to Rules Matrix & Probation (`/rules`)**:
-   - Show the **17 Rules Catalog** and the **Empirical Probation Matrix** that auto-prunes rules if false positives exceed 60% over 25 reviews.
+   - Show the **Rules Catalog** and the **Empirical Probation Matrix** that auto-prunes rules if false positives exceed 60% over 25 reviews. Every `rule_id` on an alert resolves to a catalogue entry with a `verification_status` — say so, and open one to prove it.
 2. **Navigate to Empirical Evaluation (`/evaluation`)**:
-   - Show the real measured **Precision (91.6%)**, **Recall (94.4%)**, and **F1 Score** evaluated against the planted ground truth answer key.
+   - Show precision, recall and F1 measured against the answer key — 797 labelled
+     conditions across eleven anomaly types, written by `data-gen` and derived from the
+     finished corpus rather than recorded at plant time.
+   - **State the scope before the score.** The card below the three figures names the
+     eleven covered rules and counts the alerts the key could **not** judge. Ten rules are
+     outside it, and if asked, distinguish the reasons: R-001's cost outliers and R-009's
+     duplicates are emergent — defined against the corpus, not one work — R-010 needs
+     images, R-016 and R-017 are statistics rather than alerts, and R-021's label is simply
+     unwritten. Scoring their alerts as false positives would make precision fall as those
+     rules did more work.
+   - **Say what recall means.** It measures pipeline fidelity: whether a condition known
+     to be present survives the catalogue, the status filters, probation and the alert
+     store. It is not a claim about catching real procurement fraud, and no synthetic
+     corpus can measure that. The screen says this; say it out loud too — a judge who
+     hears "94% recall" without it will hear the wrong claim.
+   - Any metric whose denominator is zero still renders `—`, never a placeholder.
 3. **Navigate to Citizen Portal (`/public`)**:
    - Show the citizen-facing interface and explain **Doctrine #4**: Whitelist-only data representation strictly preventing internal risk scores or officer deliberations from leaking to the public.

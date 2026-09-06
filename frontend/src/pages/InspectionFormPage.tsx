@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader, Card, Button, Spinner } from '../components/ui';
-import { ArrowLeft, Camera, CheckSquare, MapPin, Save, ShieldCheck } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Camera, CheckSquare, MapPin, Save, ShieldCheck } from 'lucide-react';
 import type { Work } from '../types';
 
 const CHECKLIST_ITEMS = [
@@ -24,17 +24,15 @@ export function InspectionFormPage() {
   const [lat, setLat] = useState<number>(28.6139);
   const [lng, setLng] = useState<number>(77.2090);
   const [notes, setNotes] = useState('');
-  const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({
-    chk_1: true,
-    chk_2: true,
-    chk_3: true,
-    chk_4: true,
-    chk_5: true,
-    chk_6: true,
-    chk_7: true,
-    chk_8: true,
-  });
+  // Every box starts unchecked. They used to default to `true` — all eight — so an
+  // inspector who opened the form and submitted it filed a complete clean bill of
+  // health for a work they had not looked at. The eight items are the substance of a
+  // physical inspection; a default of "verified" makes the record say something the
+  // inspector never asserted, and R-017's coverage figure would then count that work
+  // as inspected.
+  const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/works?page_size=20')
@@ -78,15 +76,32 @@ export function InspectionFormPage() {
         })),
       };
 
-      await fetch('/api/inspections', {
+      // There is no offline queue. `frontend/src/offline.ts` was planned and never
+      // written, and `vite-plugin-pwa` is a dependency that `vite.config.ts` never
+      // registers — so there is no service worker either. A failed POST here means
+      // the inspection is gone, and the inspector has to be told that rather than
+      // being navigated away as though it had been filed.
+      const res = await fetch('/api/inspections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        throw new Error(json?.error?.message ?? `Submission failed (HTTP ${res.status})`);
+      }
+
       navigate('/inspection');
     } catch (err) {
-      console.error('Failed to submit inspection:', err);
+      // Previously `console.error` and then a fall-through to `navigate`, which took
+      // the inspector to the list where their inspection was absent. Silent loss of
+      // fieldwork.
+      setSubmitError(
+        err instanceof Error
+          ? err.message
+          : 'Could not reach the server. This inspection has not been saved.',
+      );
     } finally {
       setSubmitting(false);
     }
@@ -204,6 +219,23 @@ export function InspectionFormPage() {
               className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-900 focus:outline-none focus:border-secondary"
             />
           </div>
+
+          {submitError && (
+            <div
+              role="alert"
+              className="flex gap-3 p-3.5 rounded-lg bg-rose-50 border border-rose-200"
+            >
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-rose-800">Inspection not saved</p>
+                <p className="text-xs text-rose-900">{submitError}</p>
+                <p className="text-xs text-rose-700">
+                  There is no offline queue — nothing has been stored on this device. Keep this
+                  page open and submit again once you have a connection.
+                </p>
+              </div>
+            </div>
+          )}
 
           <Button variant="primary" type="submit" disabled={submitting} className="w-full">
             {submitting ? <Spinner className="w-4 h-4" /> : <Save className="w-4 h-4" />}

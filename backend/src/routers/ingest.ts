@@ -1,7 +1,16 @@
 /**
  * Ingest Router — POST /ingest, GET /ingest/history
- * Validates, parses, and upserts 21-column e-SAKSHI CSV datasets,
+ * Validates, parses, and upserts e-SAKSHI CSV datasets,
  * then triggers compliance rule re-execution.
+ *
+ * Fund flow arrives as a `payment_history` column carrying the work's stage
+ * payments, not as `first_installment` / `second_installment`. Those two are
+ * retired from the contract: they cannot hold an N-stage history, carry no
+ * dates — so "no payment for an extended period" is unaskable — and cannot be
+ * reconciled against PFMS, which settles per payment. A file that still carries
+ * them is accepted; the values are reported back as ignored rather than
+ * converted, because converting them would require inventing the payment dates
+ * they do not have.
  */
 
 import { Router } from 'express';
@@ -10,6 +19,10 @@ import { appendAudit } from '../services/audit_chain.ts';
 import { actorOf, requireBody } from '../http.ts';
 import { nowIso, newId } from '../util.ts';
 import { runAnalyze } from '../services/alerts.ts';
+import { writePayments, type PaymentInput } from '../services/payments.ts';
+import { isPaymentStage } from '../services/fund_flow.ts';
+import { WORK_STATUSES } from '../types.ts';
+import type { WorkStatus } from '../types.ts';
 
 const router = Router();
 
@@ -30,6 +43,62 @@ function parseCsvLine(line: string): string[] {
   }
   result.push(current.trim());
   return result;
+}
+
+/**
+ * Parse the `payment_history` cell into stage payments.
+ *
+ * Format: `STAGE:YYYY-MM-DD:AMOUNT` entries separated by `|`, in payment order.
+ * Pipe-separated rather than comma-separated so an unquoted cell survives the
+ * CSV split, and one cell rather than a second file so a work and its payments
+ * arrive together and cannot be half-imported.
+ *
+ *   MOBILISATION_ADVANCE:2025-01-15:500000|RUNNING_BILL:2025-04-02:750000
+ *
+ * Malformed entries are returned as errors, not skipped. A payment that vanishes
+ * on the way in leaves a work looking unfunded, and R-014 would then report that
+ * as a finding — a fabricated one.
+ */
+export function parsePaymentHistory(
+  cell: string,
+  workId: string,
+): { payments: PaymentInput[]; errors: string[] } {
+  const payments: PaymentInput[] = [];
+  const errors: string[] = [];
+  const trimmed = cell.replace(/^"|"$/g, '').trim();
+  if (!trimmed) return { payments, errors };
+
+  const entries = trimmed.split('|').map((e) => e.trim()).filter((e) => e.length > 0);
+  entries.forEach((entry, idx) => {
+    const parts = entry.split(':').map((p) => p.trim());
+    if (parts.length !== 3) {
+      errors.push(`entry ${idx + 1} ("${entry}"): expected STAGE:DATE:AMOUNT`);
+      return;
+    }
+    const [stage, date, amountRaw] = parts as [string, string, string];
+    if (!isPaymentStage(stage)) {
+      errors.push(`entry ${idx + 1}: unknown stage '${stage}'`);
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      errors.push(`entry ${idx + 1}: date '${date}' is not YYYY-MM-DD`);
+      return;
+    }
+    const amount = Number(amountRaw);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      errors.push(`entry ${idx + 1}: amount '${amountRaw}' is not a positive number`);
+      return;
+    }
+    payments.push({
+      work_id: workId,
+      amount,
+      payment_date: date,
+      stage,
+      sequence_number: idx + 1,
+    });
+  });
+
+  return { payments, errors };
 }
 
 /** POST /ingest — Parse and import CSV data */
@@ -70,6 +139,21 @@ router.post('/', async (req, res) => {
     const agencyMap = new Map(agencies?.map(a => [a.name, a.id]) || []);
 
     const worksToUpsert: any[] = [];
+    const paymentsToWrite: PaymentInput[] = [];
+    const paymentErrors: string[] = [];
+    /** Rows carrying a value in the retired installment columns. Reported, not converted. */
+    let legacyInstallmentRows = 0;
+    /**
+     * Rows with no `recommended_date`.
+     *
+     * Counted and reported because the consequence is invisible otherwise: these
+     * works are excluded from the sanction-decision SLA entirely, so a file that
+     * omits the column produces a screen reading "0 breached" that means "not
+     * measured", not "on time".
+     */
+    let worksWithoutRecommendationDate = 0;
+    /** Rows whose `status` was not one of `WORK_STATUSES`. */
+    const unrecognisedStatuses: string[] = [];
 
     // Parse records (Skip header)
     for (let i = 1; i < lines.length; i++) {
@@ -106,7 +190,24 @@ router.post('/', async (req, res) => {
       }
 
       // Format work row matching DB schema
-      const status = record['status'] || 'PROPOSED';
+      //
+      // Status is validated against the enum rather than taken verbatim. The
+      // default used to be the literal 'PROPOSED', which is not one of
+      // `WORK_STATUSES` — so every row of an export without a status column got a
+      // status no query could match, and the SLA's rejected-work test
+      // (`status === 'CANCELLED'`) could never fire on it. An unrecognised value
+      // is counted and reported, not silently written.
+      const rawStatus = record['status']?.trim().toUpperCase();
+      let status: WorkStatus;
+      if (!rawStatus) {
+        status = 'NOT_STARTED';
+      } else if ((WORK_STATUSES as readonly string[]).includes(rawStatus)) {
+        status = rawStatus as WorkStatus;
+      } else {
+        status = 'NOT_STARTED';
+        unrecognisedStatuses.push(`${esakshi_work_id}: status '${rawStatus}' is not a recognised value, recorded as NOT_STARTED`);
+      }
+
       const sanctioned_amount = parseFloat(record['sanctioned_amount'] || '0');
       const expenditure = parseFloat(record['expenditure'] || '0');
       const released_amount = parseFloat(record['released_amount'] || '0');
@@ -114,7 +215,20 @@ router.post('/', async (req, res) => {
       const sanction_date = record['sanction_date'] || null;
       const actual_completion_date = record['completion_date'] || null;
       const physical_progress_pct = parseInt(record['physical_progress_pct'] || '0', 10);
-      
+
+      // The recommendation date is kept as it arrives, or left null.
+      //
+      // This used to read `record['recommended_date'] || sanction_date || today`,
+      // aliasing the sanction date onto the recommendation. Every work sanctioned
+      // on ingest therefore carried a recommendation-to-sanction lag of exactly
+      // zero, which made the 45-day sanction-decision SLA unmeasurable on ingested
+      // data: no row could ever breach it, so R-020 and R-021 were silent for a
+      // reason that had nothing to do with the works being timely. Where the
+      // column is absent the value is genuinely unknown, and Doctrine 6 says an
+      // unknown must not be filled in with a value that makes a rule quiet.
+      const recommended_date = record['recommended_date']?.trim() || null;
+      if (!recommended_date) worksWithoutRecommendationDate += 1;
+
       const title = record['work_title']?.replace(/^"|"$/g, '') || `Work ${esakshi_work_id}`;
       const description = record['work_description']?.replace(/^"|"$/g, '') || 'Imported via CSV Data Ingest';
       const category = record['category'] || 'OTHER';
@@ -126,8 +240,14 @@ router.post('/', async (req, res) => {
       const latitude = parseFloat(record['latitude'] || '28.6139');
       const longitude = parseFloat(record['longitude'] || '77.2090');
 
-      const first_installment = parseFloat(record['first_installment'] || '0');
-      const second_installment = parseFloat(record['second_installment'] || '0');
+      // `first_installment` / `second_installment` are retired from the contract.
+      // A file that still carries them is accepted, but the values are counted
+      // and reported rather than written: with no payment date on either column
+      // there is no honest way to turn them into stage payments, and inventing
+      // the dates would put fabricated rows into the history that R-007 measures
+      // stall periods against.
+      if (parseFloat(record['first_installment'] || '0') > 0) legacyInstallmentRows += 1;
+      else if (parseFloat(record['second_installment'] || '0') > 0) legacyInstallmentRows += 1;
 
       // Check if we already have it in DB to retain its UUID, otherwise create one
       const { data: existingWork } = await db
@@ -136,8 +256,19 @@ router.post('/', async (req, res) => {
         .eq('esakshi_work_id', esakshi_work_id)
         .maybeSingle();
 
+      const workId = existingWork?.id || newId();
+
+      // Stage payments travel with the work, so the two cannot be half-imported.
+      if (record['payment_history']) {
+        const parsed = parsePaymentHistory(record['payment_history'], workId);
+        paymentsToWrite.push(...parsed.payments);
+        for (const err of parsed.errors) {
+          paymentErrors.push(`${esakshi_work_id}: ${err}`);
+        }
+      }
+
       worksToUpsert.push({
-        id: existingWork?.id || newId(),
+        id: workId,
         esakshi_work_id,
         district_id,
         constituency_id,
@@ -151,7 +282,7 @@ router.post('/', async (req, res) => {
         sanctioned_amount,
         expenditure,
         released_amount,
-        recommended_date: record['recommended_date'] || sanction_date || nowIso().slice(0, 10),
+        recommended_date,
         sanction_date,
         actual_completion_date,
         has_uc,
@@ -159,9 +290,12 @@ router.post('/', async (req, res) => {
         is_tsp,
         latitude,
         longitude,
-        first_installment,
-        second_installment,
-        mp_name: 'Hon. Member of Parliament',
+        // No first_installment / second_installment. Retired from the contract;
+        // the stage history in `payments` is the fund-flow record.
+        //
+        // No mp_name. The CSV does not carry one, so any value written here
+        // would be invented, and Doctrine 3 bars MP-level attribution in the
+        // first place. The column keeps its schema default.
         created_at: nowIso(),
         updated_at: nowIso(),
       });
@@ -176,6 +310,20 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // Payments after works: the foreign key requires the work row to exist, and
+    // `writePayments` refreshes `works.last_payment_date` as it goes, so the
+    // stall detector reads a date derived from rows rather than falling back to
+    // `sanction_date`.
+    let paymentsWritten = 0;
+    const paymentsRejected: string[] = [...paymentErrors];
+    if (paymentsToWrite.length > 0) {
+      const result = await writePayments(paymentsToWrite);
+      paymentsWritten = result.written;
+      for (const r of result.rejected) {
+        paymentsRejected.push(`${r.input.work_id} seq ${r.input.sequence_number ?? '?'}: ${r.reason}`);
+      }
+    }
+
     // Run the rules engine & detectors pipeline to refresh the Triage Queue alerts!
     const summary = await runAnalyze(actor);
 
@@ -183,6 +331,11 @@ router.post('/', async (req, res) => {
     await appendAudit(actor, 'INGEST_ATTEMPT', 'system', 'ingest', {
       timestamp: nowIso(),
       works_loaded: worksToUpsert.length,
+      payments_loaded: paymentsWritten,
+      payments_rejected: paymentsRejected.length,
+      legacy_installment_rows_ignored: legacyInstallmentRows,
+      works_without_recommendation_date: worksWithoutRecommendationDate,
+      unrecognised_statuses: unrecognisedStatuses.length,
       alerts_generated: summary.open_alerts,
     });
 
@@ -190,6 +343,19 @@ router.post('/', async (req, res) => {
       data: {
         status: 'success',
         count: worksToUpsert.length,
+        payments_written: paymentsWritten,
+        // Surfaced, not swallowed. An operator who uploaded 200 payments and got
+        // 180 needs to see the 20 and why, in the response that reports success.
+        payments_rejected: paymentsRejected,
+        // Rows whose retired installment columns held a value. Not converted:
+        // neither column carries a payment date, so a stage payment built from
+        // them would need one invented.
+        legacy_installment_rows_ignored: legacyInstallmentRows,
+        // Works excluded from the sanction-decision SLA for want of a start date.
+        // Reported so an empty breach count is not mistaken for a clean one.
+        works_without_recommendation_date: worksWithoutRecommendationDate,
+        // Statuses outside `WORK_STATUSES`, recorded as NOT_STARTED.
+        unrecognised_statuses: unrecognisedStatuses,
         analysis: summary
       }
     });

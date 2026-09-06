@@ -1,7 +1,9 @@
 /**
- * MPLADS Platform — Express 5 Server
+ * DRISHTI Platform — Express 5 Server
  *
- * Mounts all 13 routers in contract order.
+ * Mounts all 18 routers in contract order — count the `app.use` calls below, not
+ * this comment, if the two ever disagree. It said 13 for as long as there were 17,
+ * which is the kind of drift a reader has no way to notice.
  * Express 5 auto-forwards async rejections to error middleware —
  * do NOT wrap handlers in try/catch to build responses.
  * Throw ApiError instead.
@@ -31,6 +33,7 @@ import slaRouter from './routers/sla.ts';
 import quotaRouter from './routers/quota.ts';
 import heatmapRouter from './routers/heatmap.ts';
 import healthReportsRouter from './routers/health_reports.ts';
+import agenciesRouter from './routers/agencies.ts';
 
 // ─── App setup ───────────────────────────────────────────────
 
@@ -84,6 +87,7 @@ app.use('/api/sla', slaRouter);
 app.use('/api/quota', quotaRouter);
 app.use('/api/heatmap', heatmapRouter);
 app.use('/api/health_reports', healthReportsRouter);
+app.use('/api/agencies', agenciesRouter);
 
 // ─── Error middleware ────────────────────────────────────────
 // Express 5 auto-forwards async rejections here.

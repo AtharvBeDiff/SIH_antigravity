@@ -7,6 +7,18 @@ import { AlertTriangle, ArrowLeft, Calendar, Camera, CheckCircle2, Download, Fil
 import type { Work, Alert, Payment, Document, HealthReport } from '../types';
 import { HealthReportForm } from '../components/works/HealthReportForm';
 
+/**
+ * Stage labels for the payment history. Mirrors the vocabulary in
+ * `backend/src/services/fund_flow.ts`; an unrecognised key falls through to the
+ * raw value rather than to a plausible-looking label.
+ */
+const PAYMENT_STAGE_LABELS: Record<string, string> = {
+  MOBILISATION_ADVANCE: 'Mobilisation advance',
+  RUNNING_BILL: 'Running account bill',
+  FINAL_BILL: 'Final bill',
+  RETENTION_RELEASE: 'Retention release',
+};
+
 export function WorkDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -119,9 +131,11 @@ export function WorkDetailPage() {
                 <span className="text-slate-500">Location:</span>
                 <p className="font-semibold text-slate-900 mt-0.5">{work.location_name || 'District HQ'}</p>
               </div>
+              {/* Doctrine 3 bars MP-level attribution, so this dossier records the
+                  fact of a recommendation and its date, never the individual. */}
               <div>
-                <span className="text-slate-500">MP Recommendation:</span>
-                <p className="font-semibold text-slate-900 mt-0.5">{work.mp_name || 'Hon. Member of Parliament'}</p>
+                <span className="text-slate-500">Recommended On:</span>
+                <p className="font-semibold text-slate-900 mt-0.5">{work.recommended_date || '—'}</p>
               </div>
               <div>
                 <span className="text-slate-500">GPS Coordinates:</span>
@@ -137,7 +151,22 @@ export function WorkDetailPage() {
               </div>
               <div>
                 <span className="text-slate-500">Target Completion:</span>
-                <p className="font-semibold text-slate-900 mt-0.5">{work.completion_target_date || 'Standard 24 Months'}</p>
+                {/*
+                  This read 'Standard 24 Months' when the field was null. Two problems:
+                  the scheme timeline is about one year from sanction, not two, and
+                  nothing populates completion_target_date — it is not an ingest
+                  column — so the fallback was what every work displayed. A wrong
+                  number, shown always, in the position where a real date goes.
+                  An absent extension is stated as absent.
+                */}
+                <p className="font-semibold text-slate-900 mt-0.5">
+                  {work.completion_target_date || 'Not on record'}
+                </p>
+                {!work.completion_target_date && (
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    No extension recorded; the scheme's one-year-from-sanction limit applies.
+                  </p>
+                )}
               </div>
             </div>
           </Card>
@@ -201,37 +230,61 @@ export function WorkDetailPage() {
             )}
           </Card>
 
-          {/* Payments & Disbursements Table */}
+          {/* Stage payment history */}
           <Card className="space-y-4">
             <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
               <IndianRupee className="w-4 h-4 text-blue-600" />
-              <span>Financial Disbursements & Installments</span>
+              <span>Stage Payment History</span>
             </h3>
 
             {payments.length === 0 ? (
-              <p className="text-xs text-slate-500 py-4 text-center">No individual installment payment records logged.</p>
+              <p className="text-xs text-slate-500 py-4 text-center">
+                No stage payments recorded against this work.
+              </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200/50 text-slate-500">
-                      <th className="py-2.5 px-3">Inst. #</th>
+                      <th className="py-2.5 px-3">#</th>
+                      <th className="py-2.5 px-3">Stage</th>
                       <th className="py-2.5 px-3">Amount</th>
-                      <th className="py-2.5 px-3">Disbursement Date</th>
-                      <th className="py-2.5 px-3">Purpose / Note</th>
+                      <th className="py-2.5 px-3">Payment Date</th>
+                      <th className="py-2.5 px-3">PFMS Ref.</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-900">
                     {payments.map((p) => (
                       <tr key={p.id}>
-                        <td className="py-2.5 px-3 font-mono">#{p.installment_number}</td>
+                        <td className="py-2.5 px-3 font-mono">{p.sequence_number}</td>
+                        <td className="py-2.5 px-3">
+                          {PAYMENT_STAGE_LABELS[p.stage] ?? p.stage}
+                          {p.stage === 'MOBILISATION_ADVANCE' && (
+                            <span className="block text-[11px] text-slate-500">
+                              Paid before measurement, by design
+                            </span>
+                          )}
+                        </td>
                         <td className="py-2.5 px-3 font-bold">{formatCurrency(p.amount)}</td>
                         <td className="py-2.5 px-3 text-slate-500">{formatDate(p.payment_date)}</td>
-                        <td className="py-2.5 px-3 text-slate-500">{p.purpose || 'Milestone advance'}</td>
+                        {/*
+                          Unreconciled is stated as unreconciled. A dash here means
+                          this payment has not been matched to a PFMS settlement —
+                          not that it needs no reference.
+                        */}
+                        <td className="py-2.5 px-3 font-mono text-slate-500">
+                          {p.pfms_reference || '—'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                <p className="text-[11px] text-slate-500 mt-2">
+                  {payments.length} payment(s) totalling{' '}
+                  {formatCurrency(payments.reduce((sum, p) => sum + (p.amount || 0), 0))}. A dash
+                  under PFMS Ref. means the payment has not yet been reconciled against its
+                  settlement record.
+                </p>
               </div>
             )}
           </Card>

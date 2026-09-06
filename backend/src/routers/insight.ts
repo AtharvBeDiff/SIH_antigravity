@@ -4,24 +4,41 @@
 
 import { Router } from 'express';
 import { getDb } from '../db.ts';
+import { runEvaluation } from '../services/evaluation.ts';
+import { computeVintageAdjustment } from '../services/calibration.ts';
+import { getReadinessChecklist } from '../services/readiness.ts';
 
 const router = Router();
 
-/** GET /evaluation — latest evaluation run with precision/recall */
+/**
+ * GET /evaluation — measure detector performance against the `answer_key` table.
+ *
+ * Computed live and not persisted, so a GET stays read-only. Note that `answer_key`
+ * has no writers anywhere in the repo: until it is populated, `total_planted` is 0
+ * and every metric comes back null, because a ratio over a zero denominator is
+ * undefined. The response says so rather than filling in a plausible number.
+ */
 router.get('/evaluation', async (_req, res) => {
-  const db = getDb();
-  const { data, error } = await db
-    .from('evaluation_runs')
-    .select('*')
-    .order('run_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) throw new Error(`evaluation fetch: ${error.message}`);
-  res.json({ data: data ?? null });
+  const run = await runEvaluation();
+  res.json({ data: run });
 });
 
-/** GET /calibration — corpus vs real aggregates */
+/**
+ * GET /calibration — the corpus's completion rates against the published figures,
+ * plus the vintage-adjusted reading of those figures.
+ *
+ * `vintage_adjustment` is computed on every request and is **not** persisted: it is
+ * arithmetic over `REFERENCE_AGGREGATES`, which are constants, so storing it would
+ * create a second copy of a derivation that can already never drift. It is therefore
+ * absent from the `calibration_snapshots` row and attached here, at the response
+ * boundary — which is also why `computeCalibration` must not include it in the object
+ * it inserts.
+ *
+ * It travels with the corpus comparison because 50.71% is the number a reader
+ * arrives with, and the adjustment is what turns the gap into something actionable:
+ * ~78.66% against matured value, ~₹919 Cr genuinely past deadline. The assumption
+ * behind it is carried in the payload rather than left to the client to remember.
+ */
 router.get('/calibration', async (_req, res) => {
   const db = getDb();
   const { data, error } = await db
@@ -32,23 +49,22 @@ router.get('/calibration', async (_req, res) => {
     .maybeSingle();
 
   if (error) throw new Error(`calibration fetch: ${error.message}`);
-  res.json({ data: data ?? null });
+  if (!data) {
+    res.json({ data: null });
+    return;
+  }
+  res.json({ data: { ...data, vintage_adjustment: computeVintageAdjustment() } });
 });
 
-/** GET /readiness — integration readiness checklist */
+/**
+ * GET /readiness — DRISHTI's proposed integration schema, and what actually
+ * populates each field today.
+ *
+ * Single source of truth is `services/readiness.ts`. This route used to carry its
+ * own shorter inline copy, which meant the screen and the service disagreed.
+ */
 router.get('/readiness', async (_req, res) => {
-  // Static checklist as per DATA_CONTRACT
-  const checklist = [
-    { column: 'work_id', description: 'Unique identifier', mapped: true, source_field: 'esakshi_work_id', notes: '' },
-    { column: 'district_code', description: 'District LGD code', mapped: true, source_field: 'district_id', notes: 'Mapped via internal district ID' },
-    { column: 'constituency_code', description: 'Constituency code', mapped: true, source_field: 'constituency_id', notes: '' },
-    { column: 'sanctioned_amount', description: 'Total sanctioned funds', mapped: true, source_field: 'sanctioned_amount', notes: '' },
-    { column: 'expenditure', description: 'Total expenditure', mapped: true, source_field: 'expenditure', notes: '' },
-    { column: 'status', description: 'Current status', mapped: true, source_field: 'status', notes: 'Mapped to internal enum' },
-    { column: 'completion_pct', description: 'Physical progress', mapped: true, source_field: 'physical_progress_pct', notes: '' },
-    { column: 'category', description: 'Work category', mapped: true, source_field: 'category', notes: '' },
-  ];
-  res.json({ data: checklist });
+  res.json({ data: getReadinessChecklist() });
 });
 
 export default router;

@@ -1,12 +1,22 @@
 /**
  * MPLADS Platform — Database Layer
  *
- * Wraps @supabase/supabase-js with service role key for backend use.
- * Provides query helpers that match the HANDOFF contract signatures
- * (all, get, run, exec, scalar, count, tx) so routers/services
- * are DB-agnostic.
+ * Wraps @supabase/supabase-js with the service-role key for backend use.
  *
- * Service role bypasses RLS — the backend is the trust boundary.
+ * Exports: `getDb`, `all`, `get`, `insert`, `insertMany`, `upsert`, `upsertMany`,
+ * `update`, `del`, `count`, `truncateAll`, and the storage helpers. The header used
+ * to advertise `run`, `scalar`, `exec` and `tx` — of those, only `exec` was ever
+ * written, and it has now been removed (see below); `run`, `scalar` and `tx` never
+ * existed, so a reader looking for transaction support found a promise of it here
+ * and nothing in the file. There is no transaction helper: Supabase's REST interface
+ * does not expose one, so multi-statement atomicity is not available through this
+ * layer.
+ *
+ * **Service role bypasses RLS.** Every row-level security policy in
+ * `supabase/full_schema.sql` is inert for requests the API makes. "The backend is
+ * the trust boundary" was the previous line here, and it is only true if the backend
+ * checks something — it does not: there is no authentication and no authorisation on
+ * any endpoint. See `docs/API_CONTRACT.md` §11 and `actorOf` in `http.ts`.
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -35,13 +45,16 @@ export function getDb(): SupabaseClient {
   return _client;
 }
 
-// ─── Raw SQL via Supabase rpc (pg functions) ─────────────────
+// ─── Query helpers ───────────────────────────────────────────
 //
-// For complex queries that don't map to the Supabase query builder,
-// we use a Postgres function `raw_sql` that executes parameterised SQL.
-// This function must be created in the migration.
+// Everything goes through the Supabase query builder. Where a query needs more than
+// these helpers give — a join, an aggregate, a head-count — call `getDb()` directly
+// and build it with the builder's own methods, as `routers/dashboard.ts` does.
 //
-// For simple CRUD, we use the Supabase query builder directly.
+// This block used to promise a `raw_sql` Postgres function for "complex queries that
+// don't map to the query builder", described as executing "parameterised SQL". It
+// parameterised nothing: it interpolated the query text into an `EXECUTE format`
+// under `SECURITY DEFINER`. Removed, along with the `exec()` wrapper nothing called.
 // ─────────────────────────────────────────────────────────────
 
 /** SELECT multiple rows from a table with optional filters. */
@@ -228,19 +241,23 @@ export async function count(
   return n ?? 0;
 }
 
-/** Execute raw SQL via Supabase RPC. Requires `raw_sql` function in DB. */
-export async function exec<T = unknown>(
-  sql: string,
-  params: Record<string, unknown> = {},
-): Promise<T[]> {
-  const db = getDb();
-  const { data, error } = await db.rpc('raw_sql', {
-    query: sql,
-    params: JSON.stringify(params),
-  });
-  if (error) throw new Error(`DB exec: ${error.message}\nSQL: ${sql}`);
-  return (data ?? []) as T[];
-}
+// ─── exec(): removed ─────────────────────────────────────────
+//
+// There used to be an `exec(sql, params)` here that called a `raw_sql` Postgres
+// function over Supabase RPC. That function was `SECURITY DEFINER` around
+// `EXECUTE format('... (%s) ...', query)` — arbitrary SQL as the function owner,
+// RLS bypassed, reachable over HTTP. Its `params` argument was stringified and
+// then ignored on the Postgres side, so the name suggested parameterisation that
+// did not exist.
+//
+// Nothing called it. Not one router, service, detector or generator — the whole
+// codebase went through the query builder helpers above. Keeping an unused
+// arbitrary-SQL path because it might be convenient someday is how it eventually
+// gets used with an interpolated string in it.
+//
+// If a query genuinely will not fit the builder, add a named Postgres function for
+// that query with typed arguments and call it via `getDb().rpc('<name>', {...})`.
+// See `supabase/migrations/011_drop_raw_sql.sql`.
 
 /** Truncate all application tables (for reset/seed). */
 export async function truncateAll(): Promise<void> {

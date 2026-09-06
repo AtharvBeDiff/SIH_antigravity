@@ -1,62 +1,36 @@
+/**
+ * Compliance Statistics Router — R-016 SC/ST reservation, R-017 inspection coverage.
+ *
+ * Doctrine #3: these are compliance statistics, not risk. Nothing here is ranked, and
+ * nothing here is attributed to a named Member of Parliament.
+ *
+ * Mounted at `/api/quota` for backward compatibility with the existing client. The
+ * previous handler computed SC/ST share as a fraction of the district's own
+ * sanctioned total — a ratio of the portfolio to itself, which is not the guideline's
+ * test. The arithmetic now lives in `services/compliance.ts`.
+ */
+
 import { Router } from 'express';
-import { getDb } from '../db.ts';
-import type { ApiError } from '../types.ts';
+import { qstr } from '../http.ts';
+import {
+  computeInspectionCoverage,
+  computeReservationCompliance,
+} from '../services/compliance.ts';
 
 const router = Router();
 
-router.get('/', async (req, res, next) => {
-  try {
-    const districtId = req.query.district_id as string;
-    
-    let query = getDb()
-      .from('works')
-      .select('sanctioned_amount, is_scsp, is_tsp, status');
-      
-    if (districtId) {
-      query = query.eq('district_id', districtId);
-    }
-    
-    // In real life we only care about works that are sanctioned (not rejected/proposed)
-    // but here we can just sum everything that has a sanctioned_amount > 0.
-    // To match SLA logic, maybe we include everything not cancelled.
-    query = query.neq('status', 'CANCELLED');
+/** GET /quota — SC/ST reservation compliance (R-016). */
+router.get('/', async (req, res) => {
+  const districtId = qstr(req, 'district_id');
+  const data = await computeReservationCompliance(districtId ?? undefined);
+  res.json({ data });
+});
 
-    const { data: works, error } = await query;
-
-    if (error) throw error;
-    
-    let totalSanctioned = 0;
-    let scspSanctioned = 0;
-    let tspSanctioned = 0;
-    
-    for (const work of works || []) {
-      const amt = Number(work.sanctioned_amount || 0);
-      totalSanctioned += amt;
-      if (work.is_scsp) {
-        scspSanctioned += amt;
-      }
-      if (work.is_tsp) {
-        tspSanctioned += amt;
-      }
-    }
-    
-    const scspPercentage = totalSanctioned > 0 ? (scspSanctioned / totalSanctioned) * 100 : 0;
-    const tspPercentage = totalSanctioned > 0 ? (tspSanctioned / totalSanctioned) * 100 : 0;
-    
-    res.json({
-      data: {
-        totalSanctioned,
-        scspSanctioned,
-        tspSanctioned,
-        scspPercentage,
-        tspPercentage,
-        scspTarget: 15.0, // 15%
-        tspTarget: 7.5, // 7.5%
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
+/** GET /quota/inspection — physical inspection coverage (R-017). */
+router.get('/inspection', async (req, res) => {
+  const districtId = qstr(req, 'district_id');
+  const data = await computeInspectionCoverage(districtId ?? undefined);
+  res.json({ data });
 });
 
 export default router;

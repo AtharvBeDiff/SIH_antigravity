@@ -2,6 +2,13 @@
  * Type-safe API client mapping to the Express 5 backend routers.
  */
 
+import type {
+  AgencyPerformanceReport,
+  InspectionCoverage,
+  ReservationCompliance,
+  SLAStats,
+} from '../types';
+
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
 export class ApiError extends Error {
@@ -88,13 +95,44 @@ export const api = {
     run: () => request<any>('/analyze', { method: 'POST', body: '{}' }),
   },
   sla: {
-    stats: () => request<any>('/sla/stats'),
-    evaluate: () => request<any>('/sla/evaluate', { method: 'POST', body: '{}' }),
+    stats: () => request<SLAStats>('/sla/stats'),
+    /**
+     * Re-run the sanction-decision SLA engine.
+     *
+     * `alerts_upserted` counts rows written, which includes alerts that already
+     * existed and were recomputed in place — it is not a count of newly discovered
+     * breaches. The endpoint previously called this `alertsGenerated`, which read as
+     * the latter.
+     */
+    evaluate: () =>
+      request<{ alerts_upserted: number; breached: number; at_risk: number }>(
+        '/sla/evaluate',
+        { method: 'POST', body: '{}' },
+      ),
   },
   quota: {
+    /** SC/ST reservation compliance (R-016). */
     get: (params?: Record<string, string>) => {
       const q = params ? '?' + new URLSearchParams(params).toString() : '';
-      return request<any>(`/quota${q}`);
+      return request<ReservationCompliance>(`/quota${q}`);
+    },
+    /** Physical inspection coverage against works under implementation (R-017). */
+    inspection: (params?: Record<string, string>) => {
+      const q = params ? '?' + new URLSearchParams(params).toString() : '';
+      return request<InspectionCoverage>(`/quota/inspection${q}`);
+    },
+  },
+  agencies: {
+    /**
+     * Per-agency workload and delivery pacing.
+     *
+     * Passing `district_id` rebuilds the pacing expectation from that district's own
+     * corpus, so the index compares agencies against district medians rather than
+     * national ones — a different, and for a district officer more useful, number.
+     */
+    get: (params?: Record<string, string>) => {
+      const q = params ? '?' + new URLSearchParams(params).toString() : '';
+      return request<AgencyPerformanceReport>(`/agencies${q}`);
     },
   },
   heatmap: {

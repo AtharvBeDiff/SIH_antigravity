@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Camera, CheckCircle2, Upload, X } from 'lucide-react';
+import { Camera, Upload, X } from 'lucide-react';
 import { api } from '../../lib/api';
 
 interface HealthReportFormProps {
@@ -11,31 +11,28 @@ interface HealthReportFormProps {
 export function HealthReportForm({ workId, onSuccess, onCancel }: HealthReportFormProps) {
   const [progressPct, setProgressPct] = useState<number>(0);
   const [remarks, setRemarks] = useState('');
-  const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file) {
-      setError('Photo evidence is required for a 10-day health report.');
-      return;
-    }
 
     try {
       setSubmitting(true);
       setError('');
-      
-      // In a real app, we would upload the file to Supabase Storage and get a key back.
-      // For this demo, we'll simulate an image key.
-      const mockImageKey = `health_evidence_${Date.now()}.jpg`;
 
+      // No `evidence_image_key` is sent, and the selected file is deliberately not
+      // turned into one. There is no upload path yet — the storage bucket exists but
+      // nothing writes to it — and this form used to synthesise
+      // `health_evidence_${Date.now()}.jpg` and post that. The key looked like a
+      // stored object and pointed at nothing: the work's dossier would show photo
+      // evidence on record, and the photo-reuse detector would be handed a hash
+      // input that was really a timestamp. An absent key is the honest state.
       await api.healthReports.post({
         work_id: workId,
         progress_pct: progressPct,
-        evidence_image_key: mockImageKey,
-        remarks: remarks,
-        reported_by: 'Field Inspector (Auto)',
+        remarks,
+        reported_by: 'Field Inspector',
       });
 
       onSuccess();
@@ -87,27 +84,17 @@ export function HealthReportForm({ workId, onSuccess, onCancel }: HealthReportFo
 
         <div>
           <label className="block text-sm font-medium text-text-muted mb-2">
-            Geotagged Photo Evidence
+            Photo Evidence
           </label>
-          <div className="border-2 border-dashed border-white/10 rounded-lg p-8 text-center hover:bg-white/5 transition-colors cursor-pointer relative">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            />
-            {file ? (
-              <div className="flex flex-col items-center gap-2 text-emerald-400">
-                <CheckCircle2 className="w-8 h-8" />
-                <span className="text-sm font-medium">{file.name}</span>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-2 text-text-muted">
-                <Upload className="w-8 h-8 opacity-50" />
-                <span className="text-sm">Click or drag photo to upload</span>
-                <span className="text-xs opacity-75">JPEG, PNG up to 10MB</span>
-              </div>
-            )}
+          <div className="border-2 border-dashed border-white/10 rounded-lg p-6 text-center">
+            <div className="flex flex-col items-center gap-2 text-text-muted">
+              <Upload className="w-7 h-7 opacity-40" />
+              <span className="text-sm">Photo upload is not wired up yet</span>
+              <span className="text-xs opacity-75 max-w-sm">
+                The evidence bucket exists but nothing writes to it. The report is filed
+                without an image rather than with a key that points at no stored object.
+              </span>
+            </div>
           </div>
         </div>
 
@@ -134,7 +121,7 @@ export function HealthReportForm({ workId, onSuccess, onCancel }: HealthReportFo
           </button>
           <button
             type="submit"
-            disabled={submitting || !file}
+            disabled={submitting}
             className="px-4 py-2 text-sm bg-emerald-500 hover:bg-emerald-600 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? 'Submitting...' : 'Submit Report'}

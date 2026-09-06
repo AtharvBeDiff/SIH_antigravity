@@ -6,8 +6,6 @@
   "scripts": {
     "dev": "node --experimental-strip-types --watch src/server.ts",
     "start": "node --experimental-strip-types src/server.ts",
-    "seed": "node scripts/seed.ts",
-    "reset": "node scripts/reset.ts",
     "test": "node --test --experimental-strip-types tests/**/*.test.ts",
     "typecheck": "tsc --noEmit"
   },

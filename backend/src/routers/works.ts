@@ -50,7 +50,11 @@ router.get('/:id', async (req, res) => {
 
   const [alerts, payments, documents] = await Promise.all([
     all<Alert>('alerts', { where: { work_id: work.id }, orderBy: 'severity_rank' }),
-    all<Payment>('payments', { where: { work_id: work.id }, orderBy: 'payment_date' }),
+    // Ordered by sequence, not by date. Sequence is the stage's position in the
+    // work's own history and is what the detail page renders in its '#' column;
+    // two releases settled on the same date would otherwise come back in an
+    // arbitrary order and be numbered inconsistently between requests.
+    all<Payment>('payments', { where: { work_id: work.id }, orderBy: 'sequence_number' }),
     all<Document>('documents', { where: { work_id: work.id }, orderBy: 'uploaded_at' }),
   ]);
 

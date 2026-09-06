@@ -52,12 +52,12 @@ export function MainLayout() {
     {
       title: 'AI Decision Rigor',
       items: [
-        { name: '17 Rules Matrix', path: '/rules', icon: ShieldAlert },
+        { name: 'Rules Matrix', path: '/rules', icon: ShieldAlert },
         { name: 'Audit Hash Ledger', path: '/audit', icon: Sparkles },
         { name: 'Data Ingestion', path: '/ingest', icon: FileSpreadsheet },
         { name: 'Empirical Evaluation', path: '/evaluation', icon: Award },
         { name: 'Corpus Calibration', path: '/calibration', icon: Scale },
-        { name: '21-Col Readiness', path: '/readiness', icon: ClipboardCheck },
+        { name: 'Integration Schema', path: '/readiness', icon: ClipboardCheck },
       ],
     },
     {

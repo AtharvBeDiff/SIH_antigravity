@@ -93,12 +93,6 @@
   box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
 }
 
-/* 3D Glowing AI Sphere (Blue / Cyan Gradient) */
-.ai-orb-glow {
-  background: radial-gradient(circle at 30% 30%, #60A5FA, #2563EB 55%, #1E40AF 100%);
-  box-shadow: 0 10px 30px rgba(37, 99, 235, 0.45), inset 0 0 15px rgba(255, 255, 255, 0.6);
-}
-
 /* Scrollbar hiding */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;

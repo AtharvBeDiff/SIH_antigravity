@@ -1,0 +1,47 @@
+-- ═══════════════════════════════════════════════════════════════════════
+-- 011 · Drop raw_sql: an arbitrary-SQL RPC endpoint nothing used
+-- ═══════════════════════════════════════════════════════════════════════
+--
+-- `001_initial_schema.sql` created:
+--
+--   CREATE OR REPLACE FUNCTION raw_sql(query TEXT, params TEXT DEFAULT '{}')
+--   RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
+--   DECLARE result JSONB;
+--   BEGIN
+--     EXECUTE format('SELECT jsonb_agg(row_to_json(t)) FROM (%s) t', query)
+--     INTO result;
+--     RETURN COALESCE(result, '[]'::JSONB);
+--   END; $$;
+--
+-- Three properties compound here:
+--
+--   1. `EXECUTE format('... (%s) ...', query)` interpolates the caller's text into
+--      the statement. `%s` is not quoting — it is substitution. The `params`
+--      argument exists to suggest otherwise and is never read.
+--   2. `SECURITY DEFINER` runs the statement as the function's owner, so RLS
+--      policies on every table in this schema do not apply to it.
+--   3. Supabase exposes schema functions over `/rest/v1/rpc/<name>`, so the
+--      function is callable by anything holding a key the endpoint accepts.
+--
+-- Together those make a general-purpose SQL executor available over HTTP under the
+-- owner's privileges. The platform has no authentication (see
+-- `docs/API_CONTRACT.md` §11), which makes leaving it in place harder to justify,
+-- not easier.
+--
+-- It was never exercised. `backend/src/db.ts` exported an `exec()` helper that
+-- called it, and nothing in `routers/`, `services/`, `detectors/` or `data-gen`
+-- ever called `exec()`. So this drop removes capability the platform never used —
+-- there is no query to port and no behaviour to replace.
+--
+-- 001 and `full_schema.sql` no longer create it. This migration is for databases
+-- that applied 001 before that rewrite; on a fresh database it is a no-op.
+--
+-- If a future query genuinely does not fit the Supabase query builder, add a named
+-- function for that one query, with its inputs as typed arguments and `SECURITY
+-- INVOKER` unless there is a stated reason otherwise. Do not reintroduce a function
+-- that takes SQL as a string.
+
+-- Both signatures: the two-argument form as created, and a one-argument form in
+-- case an environment created it without the `params` default.
+DROP FUNCTION IF EXISTS raw_sql(TEXT, TEXT);
+DROP FUNCTION IF EXISTS raw_sql(TEXT);

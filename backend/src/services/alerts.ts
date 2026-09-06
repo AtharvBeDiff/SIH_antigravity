@@ -4,7 +4,9 @@
  * Implements the fixed analysis pipeline:
  *   1. Compute benchmarks (district-category medians & MAD)
  *   2. Run rule engine (R-002, R-003, R-004, R-005, R-008, R-011, R-012, R-013, R-014)
- *   3. Run statistical & heuristic detectors (R-001, R-006, R-007, R-009, R-010, R-015)
+ *   3. Run statistical & heuristic detectors (R-001, R-006, R-007, R-009, R-015, and
+ *      R-010 — which is called on every run and returns nothing on every run, because
+ *      nothing writes `works.evidence_image_key`; see `detectors/photo_reuse.ts`)
  *   4. Preserve officer decisions (if reviewed/dismissed, maintain state)
  *   5. Enforce alert budget (max 10 open per district, excess -> BACKLOG)
  *   6. Upsert alerts to database
@@ -15,10 +17,13 @@ import { all, upsertMany } from '../db.ts';
 import type { Work, Alert } from '../types.ts';
 import type { AnomalyCandidate } from '../detectors/cost_outlier.ts';
 import { computeBenchmarks } from './benchmarks.ts';
-import { evaluateWorkRules } from './rule_engine.ts';
+import { evaluateWorkRules, loadRulesConfig } from './rule_engine.ts';
 import { getSuspendedRuleIds } from './probation.ts';
+import { allPayments } from './payments.ts';
+import { lastReportDateByWork } from './health_reports.ts';
+import { groupPaymentsByWork } from './fund_flow.ts';
 import { detectCostOutliers } from '../detectors/cost_outlier.ts';
-import { detectDelays } from '../detectors/delay.ts';
+import { delayParamsFromRules, detectDelays } from '../detectors/delay.ts';
 import { detectDuplicates } from '../detectors/duplicate.ts';
 import { detectPhotoReuse } from '../detectors/photo_reuse.ts';
 import { appendAudit } from './audit_chain.ts';
@@ -48,22 +53,42 @@ export async function runAnalyze(actor = 'system'): Promise<AnalysisSummary> {
     };
   }
 
-  // 1. Benchmarks & Suspended Rules (pre-fetched once)
-  const [benchmarks, suspendedIds] = await Promise.all([
+  // 1. Benchmarks, suspended rules and the payment history (pre-fetched once).
+  //
+  // Payments are fetched here rather than per-work: R-002, R-012 and R-014 all
+  // read money movement, and 200 works would otherwise be 200 round trips. An
+  // absent history is passed through as an empty array only when the fetch
+  // succeeded — the rules treat *undefined* as unknown and stay silent, which is
+  // not the same as "this work has no payments".
+  //
+  // The health-report cadence is fetched the same way and for the same reason:
+  // R-019 asks when each work was last reported on, and that is one query over
+  // `health_reports` rather than one per work.
+  const [benchmarks, suspendedIds, payments, lastReportDate] = await Promise.all([
     computeBenchmarks(),
     getSuspendedRuleIds(),
+    allPayments(),
+    lastReportDateByWork(),
   ]);
+  const paymentsByWork = groupPaymentsByWork(payments);
 
   // 2. Rule evaluation per work
   const candidates: AnomalyCandidate[] = [];
   for (const w of works) {
-    const workAlerts = await evaluateWorkRules(w, suspendedIds);
+    const workAlerts = await evaluateWorkRules(w, suspendedIds, paymentsByWork.get(w.id) ?? []);
     candidates.push(...workAlerts);
   }
 
   // 3. Corpus-wide Detectors
+  //
+  // The delay detector's thresholds come from the rule catalogue rather than from
+  // literals inside the detector, so editing `rules/mplads_rules.yaml` actually
+  // changes behaviour. Before this, R-006's `max_months` was documented on /rules
+  // and ignored by the code that fired it.
+  const delayParams = delayParamsFromRules(loadRulesConfig().rules);
+
   candidates.push(...detectCostOutliers(works, benchmarks));
-  candidates.push(...detectDelays(works));
+  candidates.push(...detectDelays(works, delayParams, lastReportDate));
   candidates.push(...detectDuplicates(works));
   candidates.push(...detectPhotoReuse(works));
 

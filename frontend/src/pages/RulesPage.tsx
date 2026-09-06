@@ -29,18 +29,37 @@ export function RulesPage() {
     loadRules();
   }, []);
 
+  /**
+   * Rules that carry a `dormant_reason` — enabled and implemented, but with no data
+   * path, so they cannot produce an alert on any corpus.
+   *
+   * Surfaced because their silence is otherwise indistinguishable from a clean
+   * result. R-010 is a CRITICAL photo-reuse check with no writer for the column it
+   * reads; listing it as ACTIVE alongside rules that are actually running turns
+   * "we cannot look" into "we looked and found nothing".
+   */
+  const dormantCount = rules.filter((r) => Boolean(r.dormant_reason)).length;
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Compliance Rules Engine & Probation Matrix"
-        description="The 17 automated compliance rules governing financial pacing, milestone integrity, and anti-fraud heuristics."
+        description="The automated compliance rules governing financial pacing, milestone integrity, and anti-fraud heuristics. The catalogue is versioned config, so the count below is read from it rather than written here."
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Rules Catalog List */}
         <Card className="lg:col-span-1 p-0 overflow-hidden divide-y divide-slate-100">
           <div className="p-4 bg-slate-50/50 border-b border-slate-200/50">
-            <h3 className="text-sm font-semibold text-slate-900">Rule Catalog (17 Rules)</h3>
+            <h3 className="text-sm font-semibold text-slate-900">
+              Rule Catalog
+              {rules.length > 0 ? ` (${rules.length} Rules` : ''}
+              {/* Dormant rules are counted separately in the header rather than
+                  quietly included in the total. A catalogue that reads "21 Rules"
+                  implies 21 checks are running; one of them cannot run. */}
+              {rules.length > 0 && dormantCount > 0 ? ` · ${dormantCount} Dormant` : ''}
+              {rules.length > 0 ? ')' : ''}
+            </h3>
             <p className="text-xs text-slate-500 mt-0.5">Click any rule to inspect logic & probation state</p>
           </div>
 
@@ -53,6 +72,10 @@ export function RulesPage() {
               {rules.map((r) => {
                 const isSelected = selectedRule?.id === r.id;
                 const isSuspended = r.probation?.suspended;
+                // Three states, not two. Suspended wins over dormant when both
+                // hold: suspension is a live decision about officer attention,
+                // dormancy is a standing fact about the data path.
+                const isDormant = Boolean(r.dormant_reason);
                 return (
                   <button
                     key={r.id}
@@ -69,6 +92,13 @@ export function RulesPage() {
                       {isSuspended ? (
                         <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-destructive/20 text-destructive">
                           SUSPENDED
+                        </span>
+                      ) : isDormant ? (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-500/20 text-amber-700"
+                          title="Implemented, but no data path — cannot fire"
+                        >
+                          DORMANT
                         </span>
                       ) : (
                         <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400">
@@ -100,6 +130,27 @@ export function RulesPage() {
                   </div>
                   <VerificationBadge status={selectedRule.verification_status} />
                 </div>
+
+                {/* Dormancy disclosure, above the objective.
+                    Placed first deliberately: everything below this point describes
+                    what the rule would do, and reading that as a description of what
+                    the platform is currently checking is the misreading this banner
+                    exists to prevent. */}
+                {selectedRule.dormant_reason && (
+                  <div className="flex gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-amber-800">
+                        Dormant — this rule cannot fire on current data
+                      </p>
+                      <p className="text-sm text-amber-900 leading-relaxed">{selectedRule.dormant_reason}</p>
+                      <p className="text-xs text-amber-700 leading-relaxed">
+                        The logic is implemented and enabled. It produces no alerts because the field it reads has
+                        no writer, so an absence of findings here is not evidence of an absence of the problem.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Rule Objective</h4>

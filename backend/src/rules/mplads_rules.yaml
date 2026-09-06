@@ -1,7 +1,15 @@
 # MPLADS Compliance Rules — v1.0.0
 #
-# 17 rules R-001…R-017. Each declares:
+# 21 rules, R-001…R-021. Each declares:
 #   severity, params, verification_status, evidence_template, applies_to_status
+#
+# The IDs are not contiguous in file order — R-018/R-019 sit with the other
+# timeline rules and R-020/R-021 with the SLA engine. Count the list, do not
+# infer a count from the highest ID.
+#
+# This file is the only place a rule ID may be minted. An alert whose rule_id
+# is absent from this catalogue cannot be resolved on /rules, cannot carry a
+# verification_status badge, and cannot be put on probation.
 #
 # verification_status:
 #   VERIFIED             — arithmetic / scheme design, known correct
@@ -32,18 +40,28 @@ rules:
     enabled: true
 
   - id: R-002
-    name: Money Released Ahead of Progress
+    name: Payment Released Ahead of Verified Progress
     description: >
-      Funds released significantly exceed physical progress.
-      Released amount is above threshold relative to completion percentage.
+      Money paid out on a work runs ahead of the physical progress that has been
+      measured and recorded. Under a stage-payment regime each release is supposed
+      to follow a measurement, so a gap between money out and progress recorded is
+      a verification-integrity signal: either the work is further along than the
+      record says, or a stage was paid without the measurement that authorises it.
+      Either way the record and the money disagree.
     severity: HIGH
     category: FINANCIAL
     verification_status: NEEDS_VERIFICATION
     params:
       release_progress_gap: 40
       min_released: 100000
+      # A mobilisation advance is *designed* to precede progress — it is paid
+      # against a bank guarantee before any work is measured — so counting it as
+      # money-ahead-of-progress flags the normal case. Excluded from the paid
+      # total; the remaining stages are the ones that require a measurement.
+      exclude_stages:
+        - MOBILISATION_ADVANCE
     evidence_template: >
-      Released ₹{{released}} ({{release_pct}}% of sanctioned) but
+      Paid ₹{{released}} ({{release_pct}}% of sanctioned) but
       physical progress is only {{progress}}%. Gap: {{gap}} percentage points.
     applies_to_status:
       - IN_PROGRESS
@@ -102,13 +120,26 @@ rules:
   - id: R-006
     name: Delayed Beyond Scheme Timeline
     description: >
-      Work has exceeded the MPLADS-prescribed completion timeline
-      without being completed.
+      Work has exceeded the MPLADS-prescribed completion timeline — about one
+      year from the date of sanction — without being completed. Where a
+      sanctioned extension of the completion date is on record, the extended
+      date is the deadline and the work is measured against that instead.
     severity: HIGH
     category: TIMELINE
+    # Still NEEDS_VERIFICATION, and deliberately so. The 12-month limit below
+    # matches the guidance that a work should generally be completed within one
+    # year of sanction, but nobody on this project has opened the 2023 guidelines
+    # PDF to pin the clause and page. Marking this VERIFIED without that citation
+    # is the exact dishonesty the verification tiers exist to prevent — VERIFIED
+    # means checked against the source, not believed correct. Flipping it is
+    # blocked on the guidelines annexure (non-code blocker #1).
     verification_status: NEEDS_VERIFICATION
     params:
-      max_months: 24
+      # Read by `detectors/delay.ts` as the R-006 breach threshold. This was 24,
+      # which the guidelines do not support: every work between 12 and 24 months
+      # overdue was treated as on time. Separate from R-018's pacing horizon below
+      # — changing one must not change the other.
+      max_months: 12
     evidence_template: >
       Work sanctioned on {{sanction_date}}, now {{months_elapsed}} months
       elapsed (scheme limit: {{max_months}} months). Status: {{status}}.
@@ -155,21 +186,39 @@ rules:
     enabled: true
 
   - id: R-018
-    name: Predictive Delay Velocity
+    # Was "Predictive Delay Velocity", described as predicting a breach "if current
+    # velocity continues". Nothing here predicts: the rule divides elapsed months by
+    # the horizon and compares the result to reported progress. There is no fitted
+    # trend, no extrapolation of the work's own history, and no completion-date
+    # estimate — two works at the same elapsed time and the same progress get the
+    # same answer regardless of how each got there. The finding is worth reporting;
+    # calling a division a forecast is what had to go.
+    name: Behind Schedule Pace
     description: >
-      Work is progressing too slowly relative to elapsed time and is predicted
-      to breach the timeline limit if current velocity continues.
+      Reported physical progress is less than half of what a straight-line schedule
+      would have reached by now. Pacing is measured against the deadline the work is
+      actually held to, so a sanctioned extension relaxes the expected curve rather
+      than flagging the work. This compares progress to a uniform schedule; it does
+      not forecast the completion date.
     severity: HIGH
     category: TIMELINE
     verification_status: PLATFORM_POLICY
     params:
       min_elapsed_months: 6
-      max_months: 24
+      # The schedule progress is measured against — the denominator in "how far
+      # along should this work be by now?". NOT the same thing as R-006's
+      # `max_months`, and named differently on purpose: both rules used to declare
+      # a param called `max_months`, and that shared name is how two independent
+      # thresholds came to be treated as one number. This was 24 against a real
+      # 12-month deadline, so the rule expected half the required progress and
+      # under-reported every genuinely slow work.
+      pacing_horizon_months: 12
       min_velocity_ratio: 0.5
     evidence_template: >
-      Work sanctioned on {{sanction_date}} ({{months_elapsed}} months ago).
-      Expected progress: {{expected_progress}}%, but actual is {{actual_progress}}%
-      (Velocity ratio: {{velocity_ratio}}).
+      Work sanctioned on {{sanction_date}} ({{months_elapsed}} months ago). On a
+      uniform {{pacing_horizon_months}}-month schedule, {{expected_progress}}%
+      progress would be due by now; reported progress is {{actual_progress}}%
+      ({{velocity_ratio}} of the expected figure).
     applies_to_status:
       - IN_PROGRESS
     enabled: true
@@ -188,6 +237,69 @@ rules:
       No 10-day health report submitted in {{days_since_update}} days (grace period exceeded).
     applies_to_status:
       - IN_PROGRESS
+    enabled: true
+
+  # ─── Sanction SLA ────────────────────────────────────────
+  #
+  # These two are evaluated by `services/sla_engine.ts`, not by
+  # `evaluateWorkRules` — that engine reads `sla_limit_days` and
+  # `sla_warning_days` from the params below rather than hardcoding them.
+  # `GET /sla/stats` reads the same params through the same module; it used to
+  # carry its own copies of 45 and 35.
+  #
+  # `applies_to_status` names the statuses a work may hold and still be awaiting
+  # a decision. CANCELLED is deliberately absent: the clause is satisfied by a
+  # rejection as much as by a sanction, so a cancelled work has had its decision
+  # and cannot breach. It is reported as its own outcome on /sla/stats rather
+  # than being dropped, because there is no rejection-date field and so no way to
+  # tell whether that decision was itself timely — an unknown, not a pass.
+  #
+  # A work with no `recommended_date` has no clock start and is never evaluated
+  # by either rule (doctrine #6).
+
+  - id: R-020
+    name: Sanction SLA Breached
+    description: >
+      A recommended work has passed the limit for the sanctioning decision
+      without being either sanctioned or rejected.
+    severity: CRITICAL
+    category: COMPLIANCE
+    verification_status: NEEDS_VERIFICATION
+    params:
+      sla_limit_days: 45
+    evidence_template: >
+      Work has been awaiting a sanction decision for {{days_pending}} days,
+      exceeding the {{sla_limit_days}}-day limit.
+    applies_to_status:
+      - NOT_STARTED
+      - IN_PROGRESS
+      - ON_HOLD
+      - COMPLETED
+    enabled: true
+
+  - id: R-021
+    name: Sanction SLA At Risk
+    description: >
+      A recommended work is approaching the sanctioning limit and has not yet
+      been sanctioned or rejected.
+    severity: HIGH
+    category: COMPLIANCE
+    # 45 days is the limit we believe the guidelines set; the 35-day early
+    # warning is our own operational choice, so this rule is PLATFORM_POLICY
+    # even though R-020 above is NEEDS_VERIFICATION.
+    verification_status: PLATFORM_POLICY
+    params:
+      sla_limit_days: 45
+      sla_warning_days: 35
+    evidence_template: >
+      Work has been awaiting a sanction decision for {{days_pending}} days,
+      past the {{sla_warning_days}}-day warning mark and approaching the
+      {{sla_limit_days}}-day limit.
+    applies_to_status:
+      - NOT_STARTED
+      - IN_PROGRESS
+      - ON_HOLD
+      - COMPLETED
     enabled: true
 
   # ─── Duplicate & Integrity ───────────────────────────────
@@ -226,17 +338,52 @@ rules:
       {{distance}} from work {{other_work_id}} (threshold: {{threshold}}).
     applies_to_status: null
     enabled: true
+    # Enabled and implemented, but there is no data path to it — so it cannot fire.
+    #
+    # detectors/photo_reuse.ts compares works.evidence_image_key pairwise, and
+    # nothing writes that column: not the CSV ingest (no such input column), not the
+    # generator, not the inspection upload. The detector filters on a key of length
+    # >= 16 and gets an empty array on every run.
+    #
+    # Left enabled deliberately rather than set to enabled: false. This is not an
+    # operator switching a rule off; the logic is correct and starts working the
+    # moment a hash source exists. What must not happen is the rule appearing on
+    # /rules as an active CRITICAL anti-fraud check — its silence would read as
+    # "no reused photos in this corpus", a finding nothing here supports.
+    #
+    # Two things are needed to lift this, and neither is a threshold change: a
+    # perceptual hash computed at upload time (the evidence bucket exists; nothing
+    # writes to it), and the hash persisted to works.evidence_image_key. The
+    # Hamming comparison in util.ts:208 is exact and needs no change.
+    dormant_reason: >
+      Nothing writes works.evidence_image_key — not the CSV ingest, not the
+      generator, not the inspection upload — so the detector has no hashes to
+      compare and produces no alerts on any corpus. Needs perceptual hashing at
+      evidence-upload time before it can fire.
 
   # ─── Category & Eligibility ──────────────────────────────
 
   - id: R-011
     name: Ineligible Category
     description: >
-      Work is categorised under a category not eligible for
-      MPLADS funding per scheme guidelines.
+      Work is categorised under a category not eligible for MPLADS funding per
+      scheme guidelines. Tests both the canonical `RELIGIOUS_HERITAGE` value and
+      the upstream spellings ingest accepts verbatim, because a real e-SAKSHI file
+      carries its own vocabulary; see the list in `services/rule_engine.ts`.
     severity: HIGH
     category: COMPLIANCE
-    verification_status: VERIFIED
+    # Was VERIFIED. Two reasons it is not:
+    #
+    # 1. Until the fix in `rule_engine.ts`, the ineligible list shared no value
+    #    with the 15 categories the system accepts, so the rule could not fire by
+    #    any code path. A rule marked VERIFIED that cannot fire is the worst case:
+    #    a silent rule reads as a clean corpus.
+    # 2. It fires now, but *which* categories the guidelines prohibit is a
+    #    guidelines question, and no official source for the list has been located.
+    #    The seven upstream spellings are inherited from earlier code, not read off
+    #    a document. VERIFIED is reserved for arithmetic and scheme design that is
+    #    known correct — not for a list we believe is right.
+    verification_status: NEEDS_VERIFICATION
     params: {}
     evidence_template: >
       Category '{{category}}' is not eligible for MPLADS funding.
@@ -244,19 +391,27 @@ rules:
     enabled: true
 
   - id: R-012
-    name: High-Value Work Without Second Installment
+    name: Stage-Payment Pipeline Stalled
     description: >
-      High-value work has only first installment released. Second
-      installment should be released after progress verification.
+      A high-value work has passed the progress point at which the next stage
+      payment falls due, but its payment history has not moved past the advance.
+      This is a signal about the payment pipeline, not about the work: the site is
+      progressing and the money is not following it, which is how a contractor
+      ends up funding public work out of pocket and how a work stalls next quarter.
     severity: LOW
     category: FINANCIAL
+    # Was "High-Value Work Without Second Installment", read off a
+    # `works.second_installment` column. Two columns cannot describe a stage
+    # payment history, so the rule now reads the `payments` rows. The thresholds
+    # themselves are unchanged and still unsourced.
     verification_status: NEEDS_VERIFICATION
     params:
       high_value_threshold: 2500000
       min_progress_for_second: 50
     evidence_template: >
-      Sanctioned ₹{{sanctioned}} (≥₹{{threshold}}) with {{progress}}%
-      progress but only first installment of ₹{{first}} released.
+      Sanctioned ₹{{sanctioned}} (≥₹{{threshold}}) at {{progress}}% progress,
+      but the payment history stops at {{stages_paid}} stage payment(s)
+      totalling ₹{{paid}}. No measured-bill payment recorded.
     applies_to_status:
       - IN_PROGRESS
     enabled: true
@@ -279,20 +434,26 @@ rules:
     enabled: true
 
   - id: R-014
-    name: No First Installment Despite Sanction
+    name: Sanctioned But Never Paid
     description: >
-      Work was sanctioned but no first installment has been released
-      within the expected timeframe.
+      A work was sanctioned and no payment of any stage has been recorded against
+      it since. Table stakes: money was committed and nothing has moved, so either
+      the work has not started or the release has not been processed, and both are
+      worth an officer's attention long before the completion deadline arrives.
     severity: MEDIUM
     category: FINANCIAL
     verification_status: PLATFORM_POLICY
     params:
       max_days_without_first: 90
     evidence_template: >
-      Sanctioned on {{sanction_date}} ({{days_elapsed}} days ago)
-      but no first installment released.
+      Sanctioned on {{sanction_date}} ({{days_elapsed}} days ago, threshold
+      {{max_days_without_first}}) with no payment of any stage recorded.
+    # Was NOT_STARTED only, which is the narrower of the two cases and not the
+    # more serious one: a work reporting progress with no money paid against it is
+    # a sharper finding than a work that has not begun. Both now qualify.
     applies_to_status:
       - NOT_STARTED
+      - IN_PROGRESS
     enabled: true
 
   # ─── Completion & Documentation ──────────────────────────
@@ -318,35 +479,106 @@ rules:
   - id: R-016
     name: SC/ST Allocation Compliance
     description: >
-      Tracks whether the constituency meets the minimum 15% (SC) and
-      7.5% (ST) allocation mandates. Reported as compliance statistics.
+      Tracks whether recommended work value meets the minimum 15% (SC) and
+      7.5% (ST) share of the annual entitlement. Reported as compliance
+      statistics, never as risk (doctrine #3), and aggregated by constituency
+      and financial year rather than by any named Member of Parliament.
     severity: LOW
     category: COMPLIANCE
+    # VERIFIED on the two percentages, which are scheme design and not in doubt.
+    # The description previously said "the constituency" meets the mandate; the
+    # guideline places it on the MP's entitlement, and the denominator in
+    # `services/compliance.ts` is that entitlement. The constituency-and-year
+    # grouping is how the platform measures it without naming a person.
     verification_status: VERIFIED
     params:
       sc_min_pct: 15
       st_min_pct: 7.5
     evidence_template: >
-      SC allocation: {{sc_pct}}% (minimum: {{sc_min_pct}}%).
-      ST allocation: {{st_pct}}% (minimum: {{st_min_pct}}%).
+      SC allocation: {{sc_pct}}% of entitlement (minimum: {{sc_min_pct}}%).
+      ST allocation: {{st_pct}}% of entitlement (minimum: {{st_min_pct}}%).
     applies_to_status: null
     enabled: true
 
   - id: R-017
     name: Inspection Coverage
     description: >
-      Tracks the percentage of completed works that have been
-      physically inspected. Reported as compliance statistics.
+      Tracks the percentage of works **under implementation** that have been
+      physically inspected in the trailing year. Reported as compliance
+      statistics, not risk.
     severity: LOW
     category: COMPLIANCE
-    verification_status: PLATFORM_POLICY
+    # Was PLATFORM_POLICY at 50% of COMPLETED works. Both halves were wrong: the
+    # mandate is an annual sample of works in progress, where an inspection can
+    # still change the outcome, not a sign-off sweep of finished assets. That
+    # makes this a claim about the guidelines rather than a threshold the
+    # platform chose, so it moves to NEEDS_VERIFICATION — the tier for "believed
+    # right, clause not yet pinned". It becomes VERIFIED when someone cites the
+    # clause and page from the 2023 guidelines annexure (non-code blocker #1),
+    # and not before.
+    verification_status: NEEDS_VERIFICATION
     params:
-      target_coverage_pct: 50
+      target_coverage_pct: 10
     evidence_template: >
-      {{inspected}} of {{completed}} completed works inspected
-      ({{coverage_pct}}%, target: {{target_coverage_pct}}%).
+      {{inspected}} of {{under_implementation}} works under implementation
+      inspected in the trailing year ({{coverage_pct}}%, target:
+      {{target_coverage_pct}}%).
     applies_to_status: null
     enabled: true
+
+# ─── Fund-Flow Regimes ────────────────────────────────────
+#
+# The corpus spans three fund-flow regimes and no column in the schema
+# distinguishes them, so a rule reasoning about money movement has to derive the
+# regime from a date. It is declared here, in the catalogue, because that is the
+# one place a rule's inputs are written down and shown on /rules — a threshold
+# that is only meaningful under one regime has to be readable next to the rule
+# that applies it. `services/fund_flow.ts` is the only reader.
+#
+# Why it matters concretely: under Model 1A / TSA the money does not sit in a
+# district account waiting to be released, so "sanctioned N days ago and nothing
+# paid" (R-014) and "paid ahead of progress" (R-002) mean different things either
+# side of 1 April 2025. Nothing in this build varies its thresholds by regime
+# yet. The boundary is recorded so that when a rule needs to, it can, and so that
+# a figure spanning the boundary can be labelled instead of silently averaged.
+#
+# Dates are quoted: unquoted they parse as timestamps, and every consumer here
+# wants the plain 'YYYY-MM-DD' string.
+#
+# NEEDS_VERIFICATION on all three. The two boundary dates are matters of public
+# record and are believed correct, but nobody on this project has cited the
+# notification that sets them — same standard applied to every other threshold in
+# this file (non-code blocker #1).
+
+fund_flow_regimes:
+  - id: PRE_2023
+    name: Pre-revision guidelines
+    starts: null
+    ends: '2023-03-31'
+    verification_status: NEEDS_VERIFICATION
+    notes: >
+      Works sanctioned under the guidelines in force before the 2023 revision.
+      Present in the corpus as history; the platform does not judge them against
+      post-revision thresholds.
+
+  - id: REVISED_2023
+    name: Revised guidelines (2023)
+    starts: '2023-04-01'
+    ends: '2025-03-31'
+    verification_status: NEEDS_VERIFICATION
+    notes: >
+      The revised MPLADS guidelines take effect. District-level release still
+      moves money into an account the district draws down.
+
+  - id: TSA_HYBRID
+    name: TSA Hybrid (Model 1A)
+    starts: '2025-04-01'
+    ends: null
+    verification_status: NEEDS_VERIFICATION
+    notes: >
+      Single Nodal Account / Treasury Single Account hybrid. Funds are drawn
+      just-in-time against a sanctioned payment rather than parked in advance, so
+      "released but not spent" is not the same quantity it was before this line.
 
 # ─── Probation Config ─────────────────────────────────────
 

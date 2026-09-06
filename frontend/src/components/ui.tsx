@@ -123,17 +123,47 @@ export function StatCard({
   );
 }
 
-// ─── Radial Benchmark Gauge (19.24% MoSPI Meter) ─────────────
+// ─── Radial Benchmark Gauge ──────────────────────────────────
 
+/**
+ * Neither `percentage` nor `target` has a default, deliberately. This gauge used to
+ * default `target` to 19.24, so every caller that omitted the prop silently
+ * inherited a wrong benchmark. There are now two published benchmarks — 50.71% by
+ * value and 61.88% by count — and no default can be correct for both. The caller
+ * must say which one it is comparing against.
+ *
+ * `percentage` is nullable because an unmeasured corpus has no rate; it renders as
+ * '—' rather than as a plausible-looking number.
+ */
 export function BenchmarkGauge({
-  percentage = 19.3,
-  target = 19.24,
-  label = "MoSPI Fund-to-Completion Ratio",
+  percentage,
+  target,
+  label,
 }: {
-  percentage: number;
-  target?: number;
-  label?: string;
+  percentage: number | null;
+  target: number;
+  label: string;
 }) {
+  const measured = typeof percentage === 'number' && Number.isFinite(percentage);
+  const atOrAbove = measured && percentage >= target;
+
+  // The verdict is derived, not hardcoded. This label previously read "On Track"
+  // unconditionally, so a corpus completing 5% of its sanctioned value still
+  // reported as on track.
+  const verdict = !measured ? 'Not measured' : atOrAbove ? 'At or above benchmark' : 'Below benchmark';
+  const verdictClass = !measured
+    ? 'text-slate-400'
+    : atOrAbove
+      ? 'text-emerald-600'
+      : 'text-amber-600';
+  const arcClass = !measured
+    ? 'text-slate-200'
+    : atOrAbove
+      ? 'text-emerald-500'
+      : 'text-amber-500';
+
+  const sweep = measured ? Math.min(Math.max(percentage, 0), 100) : 0;
+
   return (
     <div className="flex flex-col items-center justify-center p-2 text-center">
       <div className="relative w-44 h-24 flex items-end justify-center overflow-hidden">
@@ -154,24 +184,26 @@ export function BenchmarkGauge({
             cx="50"
             cy="50"
             r="40"
-            className="text-emerald-500 transition-all duration-1000 ease-out"
+            className={`${arcClass} transition-all duration-1000 ease-out`}
             strokeWidth="10"
             strokeDasharray="125.6 125.6"
-            strokeDashoffset={125.6 - (125.6 * Math.min(percentage, 100)) / 100}
+            strokeDashoffset={125.6 - (125.6 * sweep) / 100}
             strokeLinecap="round"
             stroke="currentColor"
             fill="transparent"
           />
         </svg>
         <div className="absolute bottom-1 flex flex-col items-center">
-          <span className="text-3xl font-bold tracking-tight text-slate-900">{percentage.toFixed(1)}%</span>
-          <span className="text-[10px] uppercase font-bold text-emerald-600">On Track</span>
+          <span className="text-3xl font-bold tracking-tight text-slate-900">
+            {measured ? `${percentage.toFixed(1)}%` : '—'}
+          </span>
+          <span className={`text-[10px] uppercase font-bold ${verdictClass}`}>{verdict}</span>
         </div>
       </div>
 
       <div className="mt-3 text-xs text-slate-600">
         <p className="font-semibold text-slate-900">{label}</p>
-        <p className="text-[11px] text-slate-500 mt-0.5">Benchmark Target: {target}%</p>
+        <p className="text-[11px] text-slate-500 mt-0.5">Benchmark: {target.toFixed(2)}%</p>
       </div>
     </div>
   );
@@ -335,7 +367,11 @@ export function SyntheticBanner() {
   return (
     <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs font-semibold text-amber-800 flex items-center justify-center gap-2">
       <Sparkles className="w-4 h-4 text-amber-600" />
-      <span>DEMO CORPUS ACTIVE: Reproducible synthetic dataset anchored to MoSPI 19.24% completion benchmark.</span>
+      {/* No benchmark-anchoring claim here. The generator draws work status
+          uniformly at random, so its completion rate is an artefact of that draw
+          (~1 in 6 by count) and is not calibrated to the published figures. What
+          the corpus actually measures against them is shown on /calibration. */}
+      <span>DEMO CORPUS ACTIVE: synthetic dataset — not e-SAKSHI data. See /calibration for how it compares to the published MPLADS figures.</span>
     </div>
   );
 }

@@ -6,7 +6,7 @@ graph TB
         FE["React 19 + Vite 8 + Tailwind 4<br/>18 Route Pages · PWA Sync"]
     end
     subgraph "Railway Compute"
-        BE["Express 5 REST API (Node 24 Native TS)<br/>13 Routers · 17 Rules (YAML) · 4 Detectors"]
+        BE["Express 5 REST API (Node 24 Native TS)<br/>17 Routers · 21 Rules (YAML) · 4 Detectors"]
     end
     subgraph "Supabase Cloud"
         DB[("PostgreSQL 15<br/>19 Tables · RLS Policies")]
