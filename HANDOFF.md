@@ -252,7 +252,7 @@ from the clock, so re-running on a different day reproduces the same corpus.
 | `backend/src/types.ts` | **THE source of truth for every shape.** Read before declaring any type. Never shadow or duplicate. |
 | `frontend/src/types.ts` | Frontend mirrors of the same shapes. Keep in lockstep with the backend file. |
 | `backend/src/util.ts` | `canonicalJson`, `sha256`, `stableId`, `newId`, `daysBetween`, `monthsBetween`, `addDays`, `toMonth`, `median`, `percentile`, `mad`, `robustZ`, `fmtINR`, `haversineMeters`, `tokenSetRatio`, `jaccard`, `hexHamming`, `renderTemplate`, `makeRng`, `pick`, `randInt`. |
-| `backend/src/db.ts` | `getDb`, `all`, `get`, `insert`/`insertMany`, `upsert`/`upsertMany`, `update`, `del`, `count`, `truncateAll`, storage helpers. **No `run`/`scalar`/`tx`/`exec`** — see §3.3. |
+| `backend/src/db.ts` | `getDb`, `all`, `get`, `insert`/`insertMany`, `upsert`/`upsertMany`, `update`, `del`, `count`, `truncateAll`, storage helpers. **No `run`/`scalar`/`tx`/`exec`** — see §3.4. |
 | `backend/src/http.ts` | `qstr`, `qnum`, `qbool`, `paging`, `actorOf`, `requireBody`, `requireString`, `requireOneOf`, `notFound`, `requireDemoMode`. |
 | `backend/src/rules/mplads_rules.yaml` | **The compliance logic as versioned config.** The only place a rule ID may be minted. Plus `probation` and `alert_budget` config and the eligible/ineligible category lists. |
 | `backend/src/services/audit_chain.ts` | `appendAudit`, `appendAuditMany`, `verifyChain`, `readAudit`, `chainHead`, `demoTamper`/`demoRestore` (DEMO_MODE-gated). |
@@ -262,7 +262,34 @@ from the clock, so re-running on a different day reproduces the same corpus.
 | `docs/API_CONTRACT.md` | The HTTP surface: base `/api`, error shape `{error:{code,message,details?}}`, the fixed analyze-pipeline order, queue ordering `severity_rank DESC, created_at ASC`, the mount list. |
 | `docs/DATA_CONTRACT.md` | The CSV ingest field table, `payment_history` stage encoding, calibration reference aggregates, the integration ask. |
 
-### 3.3 Things this document used to claim that were never true
+### 3.3 An unmerged branch you must look at before touching ingest
+
+`git branch` shows **`wip/main-checkout-ingest`** (commit `bcd7ed1`, parented on
+`07ab68e`). It is **not merged into `main` and must not be merged blindly.**
+
+It preserves work that was sitting **uncommitted in the main checkout's working tree**
+when the cleanup branch landed — roughly 1,300 lines across 34 files, dated 2026-08-27.
+It was committed verbatim, byte-for-byte verified against the working tree, and only
+then was `main` fast-forwarded, so nothing was lost. Its substantive content:
+
+- **`backend/src/services/csv.ts` and `backend/src/services/corpus.ts`** with
+  `backend/tests/csv.test.ts` and `corpus.test.ts` — a real CSV parsing layer
+  (`parseCsv`, `CsvParseError`) that `main` does not have.
+- **A different `backend/src/routers/ingest.ts`** — 498 lines, built on that parser.
+  `main`'s version is 381 lines and took a different route. **These two genuinely
+  conflict**; one has to be chosen deliberately.
+- `data-gen/generate_ingest_test_csv.ts`, and changes to `heatmap.ts`, `meta.ts`,
+  `public.ts`, `inspection.ts`, `state.tsx` that `main` does not carry.
+- It also touches `OverviewPage.tsx`, `dashboard.ts` and `types.ts` — the same files the
+  cleanup pass rewrote. **Take nothing from those three without reading `main`'s version
+  first**; the WIP predates the fabrication cleanup and reintroducing its versions would
+  bring the hardcoded figures back.
+
+Suggested approach: cherry-pick the *new* files (`csv.ts`, `corpus.ts`, their tests,
+the generator script) onto `main` first, verify the gate still reads 46/0/0, then
+reconcile `ingest.ts` by hand. Do not `git merge` it wholesale.
+
+### 3.4 Things this document used to claim that were never true
 
 Kept deliberately, so nobody re-adds them from an old copy:
 
@@ -308,7 +335,7 @@ State this accurately if asked; it is deliberately not papered over.
 - The live Supabase project URL was **scrubbed from `README.md`**. No key rotation was
   needed: the `eyJhbGci…` fragment that was there is 8 characters of universal JWT
   header carrying no secret material, and `backend/.env` was never committed.
-- The `raw_sql()` SQL-injection sink is **removed** (see §3.3).
+- The `raw_sql()` SQL-injection sink is **removed** (see §3.4).
 - The public-view whitelist is the one access control that genuinely holds, and
   `tests/public_leakage.test.ts` is what holds it.
 
