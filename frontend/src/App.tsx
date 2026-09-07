@@ -7,6 +7,7 @@ import { AlertDetailPage } from './pages/AlertDetailPage';
 import { WorksPage } from './pages/WorksPage';
 import { WorkDetailPage } from './pages/WorkDetailPage';
 import { AgenciesPage } from './pages/AgenciesPage';
+import { AskPage } from './pages/AskPage';
 import { CompliancePage } from './pages/CompliancePage';
 import { DigestPage } from './pages/DigestPage';
 import { SLAPage } from './pages/SLAPage';
@@ -39,6 +40,7 @@ function App() {
             <Route path="digest" element={<DigestPage />} />
             <Route path="sla" element={<SLAPage />} />
             <Route path="heatmap" element={<HeatmapPage />} />
+            <Route path="ask" element={<AskPage />} />
 
             {/* How It Decides & Rigor */}
             <Route path="rules" element={<RulesPage />} />

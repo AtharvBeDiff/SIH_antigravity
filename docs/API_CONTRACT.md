@@ -138,6 +138,32 @@ Doctrine #3 applies: nothing in this section is ranked, and nothing is attribute
   `backend/tests/public_leakage.test.ts` — a new internal column is excluded by default
   rather than by remembering to exclude it.
 
+## 10a. Ask the Corpus — natural-language questions (text-to-SQL)
+
+- `GET /api/query/status` — Whether the feature can be used, and under what limits. Returns `{ available, reason, model, readable_relations, max_rows, statement_timeout_ms }`.
+
+  `available: false` with a `reason` when no model credential is configured. **200, not 503**: a deployment without a key is a fact about the deployment, and the UI needs to render an honest disabled state rather than a text box that always fails.
+
+- `GET /api/query/examples` — Questions known to translate well, each with a one-line reason. Not decoration: a blank box in front of a text-to-SQL system produces unanswerable questions, and the officer reads the resulting error as the product being broken. Every example aggregates by agency, district, category or rule — never by elected representative — so the affordance leads toward questions the platform will answer.
+
+- `POST /api/query` — Body: `{ question: string }`, max 500 characters. Returns `{ question, sql_generated, sql_executed, relations, truncated, rows, row_count, columns, model, latency_ms: { model, database }, audit_seq }`. Audited on every execution **and on every rejection**.
+
+  `POST` for a read, deliberately: it appends to the audit ledger, a question belongs in a body rather than a URL, and a GET would put the question in every intermediary's logs.
+
+  `sql_generated` and `sql_executed` differ — the row cap wraps the model's query rather than appending to it. Both are returned because the answer's provenance is part of the answer (Doctrine 7). `truncated` is true only when the cap was **binding and reached**; a 12-row answer is not truncated merely because no `LIMIT` was written.
+
+  **Three layers stand between the question and the database**, and each assumes the previous may have failed:
+
+  1. The prompt (`services/nl_query.ts`) describes only the eleven allowlisted relations and never names `mp_name`. This shapes output; it constrains nothing. A quality measure, not a security control.
+  2. The guard (`services/sql_guard.ts`) is an allowlist that fails closed — single `SELECT`, no CTE, no dollar quoting, no quoted identifiers, no catalogue access, no Doctrine-3 column, allowlisted relations only. 54 adversarial tests in `backend/tests/sql_guard.test.ts`, which **must not be weakened**.
+  3. The database (`supabase/migrations/012_readonly_sql_role.sql`) executes through `drishti_readonly_select`, whose body runs `SET TRANSACTION READ ONLY`. Postgres refuses any write regardless of what text got through — including a data-modifying CTE, and including constructs the guard has never heard of. This is the layer that survives a bug in the other two.
+
+  Errors: `503 LLM_UNCONFIGURED` (no credential — checked before the actor is resolved, so a keyless deployment does not report an authentication problem instead), `400 UNSAFE_QUERY` (the guard refused; `details.sql` carries the SQL), `422 QUERY_FAILED` (Postgres refused, usually an invented column; distinguished from `UNSAFE_QUERY` because the officer's next action differs — rephrase, versus this question is not permitted), `502 LLM_AUTH`, `504 LLM_TIMEOUT`, `502 LLM_FAILED`, `502 LLM_BLOCKED`.
+
+  Three relations are deliberately **not** readable: `constituencies` (carries `mp_name`/`mp_party`; Doctrine 3 needs an enforcement point here because the query author is a model that has never read the doctrine), `audit_events` (read it through `/api/audit`, which verifies the hash chain as it reads), `answer_key` (evaluation ground truth — a query that can read it can flatter the detectors).
+
+  The audit payload carries the question and both SQL forms but **not the rows**: the ledger is append-only and hash-chained, so result sets would grow it without bound and copy corpus data into a structure that is never pruned. The query text is reproducible, which is what makes the entry useful.
+
 ---
 
 ## 11. Authentication and access control — what does not exist
@@ -160,6 +186,14 @@ endpoint is reachable by every caller, including the mutating ones —
 **RLS is bypassed.** `backend/src/db.ts` connects with the Supabase service-role key.
 The row-level security policies in `supabase/full_schema.sql` are real and are not in
 force for any request the API makes.
+
+**This is why `POST /api/query` is fenced the way it is.** §10a executes model-generated
+SQL, and the two facts above are the reason its guard is an allowlist and its execution
+path is a read-only transaction rather than a `db.ts` helper: an unauthenticated caller
+reaches a client that bypasses every RLS policy, so prompt injection through the question
+would otherwise be a direct path to arbitrary SQL. Migration 012 bounds what a generated
+query can *do*. It does not bound *who may ask* — that is this section's gap, and it is
+still open.
 
 **What this means for the audit ledger.** The chain is genuinely tamper-evident: the
 `seq | prev_hash | payload_hash` construction means a recorded entry cannot be altered

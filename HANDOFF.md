@@ -217,16 +217,22 @@ went stale precisely because it asserted counts nobody re-measured.
 
 | Thing | Count | How to re-measure |
 |---|---|---|
-| Backend routers | **18** | `ls backend/src/routers/*.ts \| wc -l` |
-| Router mounts in `server.ts` | **18** | `grep -c "app.use('/api" backend/src/server.ts` |
-| HTTP endpoints | **38** | `grep -rhoE "router\.(get\|post\|patch\|put\|delete)\(" backend/src/routers/*.ts \| wc -l` |
-| Backend services | **18** | `ls backend/src/services/*.ts \| wc -l` |
+| Backend routers | **19** | `ls backend/src/routers/*.ts \| wc -l` |
+| Router mounts in `server.ts` | **19** | `grep -c "app.use('/api" backend/src/server.ts` |
+| HTTP endpoints | **41** | `grep -rhoE "router\.(get\|post\|patch\|put\|delete)\(" backend/src/routers/*.ts \| wc -l` |
+| Backend services | **21** | `ls backend/src/services/*.ts \| wc -l` |
+| Backend test files | **6** | `ls backend/tests/*.test.ts \| wc -l` |
 | Detectors | **4** | `cost_outlier`, `delay`, `duplicate`, `photo_reuse` |
 | Rules in the YAML catalogue | **21** | `grep -cE "^  - id: R-" backend/src/rules/mplads_rules.yaml` |
 | Tables | **19** | `grep -rhoE "^CREATE TABLE (IF NOT EXISTS )?[a-z_]+" supabase/migrations/*.sql \| sed 's/.*TABLE //; s/IF NOT EXISTS //' \| sort -u \| wc -l` |
-| Migrations | **001–011** | `ls supabase/migrations/` |
-| Routed frontend pages | **20** | count `<Route>` in `frontend/src/App.tsx` |
-| Files in `frontend/src/pages/` | **25** | 5 are orphans — see below |
+| Migrations | **001–012** | `ls supabase/migrations/` |
+| Routed frontend pages | **23** | count `<Route>` in `frontend/src/App.tsx` |
+| Files in `frontend/src/pages/` | **26** | 5 are orphans — see below |
+
+Migration **012** is the newest and **must be applied by hand** before `POST /api/query`
+will work — it defines `drishti_readonly_select`, and without it that endpoint returns
+`500 QUERY_SHAPE`. It is the only migration whose absence breaks a shipped feature
+rather than merely a table, so it is called out here as well as in §3.1.
 
 **The 19 tables:** `agencies alerts answer_key audit_events calibration_snapshots
 constituencies digest_history districts documents evaluation_runs field_sync_queue
@@ -473,7 +479,10 @@ denominator. All of it is derived in `services/calibration.ts`, never hardcoded.
 `CODE_CHANGES.md` Part 2 lists **17 feature gaps (P-01 … P-17)** across the four
 authority roles, each with a **tier label that is a commitment — ship it in the UI next
 to the feature**. Its own execution order says: build **P-01, then P-15, P-04, P-06,
-P-03**. **P-12 is already delivered** as the agency-performance work above.
+P-03**. **P-12 is already delivered** as the agency-performance work above, and **P-15 is
+delivered** by the session that wrote §6.3 — so the live order is now **P-01 → P-04 →
+P-06 → P-03**, with the caveat that P-01 is hard-blocked on a document nobody has yet
+(§6.1 item 1). If you cannot obtain the annexure, start at P-04.
 
 **P-01 · Free-text eligibility screening · Tier 1 · highest value in the plan.**
 An MP's recommendation arrives as prose: *"construction of community hall cum marriage
@@ -488,11 +497,10 @@ annexure as text — the single highest-value document to obtain, and a hard blo
 Why first: **₹6,654.76 Cr of recommendations never reach sanction**, roughly twice the
 value stalled *after* sanction, and this is the only feature that acts on that pool.
 
-**P-15 · Natural-language questions over the corpus · Tier 1 · faked today.**
-Text-to-SQL against a **read-only view**, with the **generated query displayed** to the
-officer — auditable (Doctrine 7), cannot mutate (Doctrine 1). Converts the worst
-integrity liability in the product into its best demo, reusing an interface that already
-exists. Shares a screen with P-01 naturally.
+**P-15 · Natural-language questions over the corpus · Tier 1 · ~~faked today~~ DELIVERED.**
+Built — see §6.3 for what exists, what is untested, and the one manual step it needs.
+Read that before touching it; the security reasoning is the substance of the feature and
+a well-meant simplification will undo it.
 
 **P-04 · Document AI on UCs, certificates and bills · Tier 1 · total gap.**
 OCR → key-value extraction → cross-field consistency against the portal record,
@@ -549,6 +557,69 @@ difference.
   `UNCOVERED_RULES`.
 - Take on the 46 backend typecheck errors as their own task.
 - Separate the public tree from the officer shell and add the EN/HI toggle.
+
+### 6.3 P-15 as built — read before you touch it
+
+**Ask the Corpus** is live at `/ask`, served by three endpoints (`GET /api/query/status`,
+`GET /api/query/examples`, `POST /api/query`) documented in `docs/API_CONTRACT.md` §10a.
+A question in plain language becomes SQL, the SQL is checked, executed read-only, and
+**shown to the officer above the rows, always** — not behind a disclosure triangle. That
+display is the feature, not decoration: a number an officer will act on has to come with
+what was counted.
+
+**Three layers of defence, in increasing order of trustworthiness.** Understand which is
+which before you edit any of them:
+
+1. `backend/src/services/nl_query.ts` — the schema description and system prompt. This
+   **shapes** the model's output and **constrains nothing**. It is a quality measure, not
+   a security control. Do not reason about safety from it.
+2. `backend/src/services/sql_guard.ts` — the application guard. Strong, and still
+   application code, so it can have bugs. It allows exactly one `SELECT`, no CTEs, no
+   stacked statements, no dollar-quoting, no quoted identifiers, an 11-relation allowlist
+   (`READABLE_RELATIONS`) and a forbidden-column list (`FORBIDDEN_COLUMNS =
+   ['mp_name','mp_party']` — that is **Doctrine 3 reaching into the query layer**). Row
+   cap 500, applied by **wrapping** the query, not by appending `LIMIT`.
+3. `supabase/migrations/012_readonly_sql_role.sql` — the database. `SET TRANSACTION READ
+   ONLY` inside `public.drishti_readonly_select()`. This is the layer that survives a bug
+   in layers 1 and 2, and it is the only reason this feature is defensible at all given
+   that the backend holds a service-role key that bypasses every RLS policy (Part 4).
+
+`backend/tests/sql_guard.test.ts` (54 adversarial cases) stands to the guard exactly as
+`public_leakage.test.ts` stands to the public view: **a change that makes a test here pass
+by relaxing the guard has broken the product, not fixed the test.**
+`backend/tests/nl_query.test.ts` (21 cases) drives `answerQuestion` with a hostile stub
+model — the model client is injected precisely so the boundary is testable with no
+credential and no database.
+
+**Two things are unfinished, and both matter:**
+
+- **Migration 012 has never been applied to any database.** Until an operator runs it,
+  `POST /api/query` returns `500 QUERY_SHAPE`. Its three verification queries at the foot
+  of the file (each expecting SQLSTATE `25006`) have **not been run** — nobody has
+  confirmed the read-only transaction actually refuses a write. Run them first.
+- **The Gemini path has never executed against the live API.** Everything up to the HTTP
+  call is tested; the call itself is not. `backend/src/services/llm.ts` handles the
+  September 2026 **auth-key** migration (header `x-goog-api-key`; `GOOGLE_API_KEY` wins
+  over `GEMINI_API_KEY` if both are set, matching Google's own SDKs). With no key,
+  `/api/query/status` reports `available: false` with a reason and the screen renders a
+  disabled state — **it does not fall back to a canned answer**, because a fabricated
+  result is worse than an absent one.
+
+Copy `backend/env.example` → `backend/.env` and fill it in. That template is named
+without the leading dot on purpose: `.gitignore:18` (`**/.env.*`) matched
+`.env.example`, so the file `db.ts` told every operator to copy was invisible to git and
+missing from every clone. Do not "fix" the name.
+
+**Also removed in this work:** the `MainLayout.tsx` sidebar card claiming *"continuous
+multi-modal anomaly telemetry active on 200 works"* over a hardcoded count and a
+telemetry pipeline that did not exist. It now links to `/ask`. That substitution — a real
+narrow feature in place of a broad fake one — is the shape of every remaining P-item.
+
+**Noticed while building, not fixed:** `frontend/src/lib/api.ts:26` sends header
+`x-actor`, but `backend/src/http.ts:103` reads `x-user-id`. So every call through the
+shared API client silently attributes to `demo-officer` instead of the real actor.
+`AskPage.tsx` sidesteps it by sending `x-user-id` directly. Pick one name and fix both
+sides; the audit ledger is only as honest as the actor string it records.
 
 ---
 

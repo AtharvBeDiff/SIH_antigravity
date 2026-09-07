@@ -34,6 +34,7 @@ import quotaRouter from './routers/quota.ts';
 import heatmapRouter from './routers/heatmap.ts';
 import healthReportsRouter from './routers/health_reports.ts';
 import agenciesRouter from './routers/agencies.ts';
+import queryRouter from './routers/query.ts';
 
 // ─── App setup ───────────────────────────────────────────────
 
@@ -88,6 +89,10 @@ app.use('/api/quota', quotaRouter);
 app.use('/api/heatmap', heatmapRouter);
 app.use('/api/health_reports', healthReportsRouter);
 app.use('/api/agencies', agenciesRouter);
+// Mounted at /api rather than /api/query: the router owns '/query', '/query/status' and
+// '/query/examples', so mounting it one level up keeps those paths literal in the file
+// that defines them instead of splitting each one across two files.
+app.use('/api', queryRouter);
 
 // ─── Error middleware ────────────────────────────────────────
 // Express 5 auto-forwards async rejections here.

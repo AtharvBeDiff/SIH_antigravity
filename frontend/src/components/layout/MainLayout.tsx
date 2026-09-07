@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Bot,
+  MessagesSquare,
   Zap,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -47,6 +48,7 @@ export function MainLayout() {
         { name: 'District Digest', path: '/digest', icon: FileText },
         { name: '45-Day SLA Engine', path: '/sla', icon: Clock },
         { name: 'Activity Heatmap', path: '/heatmap', icon: Activity },
+        { name: 'Ask the Corpus', path: '/ask', icon: MessagesSquare },
       ],
     },
     {
@@ -153,19 +155,28 @@ export function MainLayout() {
                 ))}
               </nav>
 
-              {/* DRISHTI AI Copilot Bottom Card */}
+              {/*
+                Was a "DRISHTI Copilot" card claiming "continuous multi-modal anomaly
+                telemetry active on 200 works" — no such telemetry existed, and the count
+                was hardcoded. Replaced with a link to the feature that does exist, whose
+                text describes only what it does: translate a question to SQL and show it.
+              */}
               <div className="p-3.5 border-t border-slate-200 space-y-3">
-                <div className="p-3.5 rounded-2xl bg-gradient-to-br from-blue-50/80 to-indigo-50/50 border border-blue-100 relative overflow-hidden group">
+                <Link
+                  to="/ask"
+                  className="block p-3.5 rounded-2xl bg-gradient-to-br from-blue-50/80 to-indigo-50/50 border border-blue-100 hover:border-blue-300 transition-colors"
+                >
                   <div className="flex items-center gap-2.5 mb-1.5">
                     <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
                       <Bot className="w-3.5 h-3.5" />
                     </div>
-                    <span className="text-xs font-bold text-slate-900 tracking-tight">DRISHTI Copilot</span>
+                    <span className="text-xs font-bold text-slate-900 tracking-tight">Ask the Corpus</span>
                   </div>
                   <p className="text-[11px] text-slate-500 leading-tight">
-                    Continuous multi-modal anomaly telemetry active on 200 works.
+                    A plain-language question, translated to SQL and executed read-only. The
+                    query is shown with the answer.
                   </p>
-                </div>
+                </Link>
 
                 {/* Profile Pill */}
                 <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/60">

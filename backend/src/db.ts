@@ -35,7 +35,7 @@ export function getDb(): SupabaseClient {
     if (!url || !key) {
       throw new Error(
         'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment. ' +
-        'Copy .env.example to .env and fill in your Supabase project credentials.'
+        'Copy backend/env.example to backend/.env and fill in your Supabase project credentials.'
       );
     }
     _client = createClient(url, key, {
