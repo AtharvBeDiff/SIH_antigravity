@@ -480,9 +480,10 @@ denominator. All of it is derived in `services/calibration.ts`, never hardcoded.
 authority roles, each with a **tier label that is a commitment — ship it in the UI next
 to the feature**. Its own execution order says: build **P-01, then P-15, P-04, P-06,
 P-03**. **P-12 is already delivered** as the agency-performance work above, and **P-15 is
-delivered** by the session that wrote §6.3 — so the live order is now **P-01 → P-04 →
-P-06 → P-03**, with the caveat that P-01 is hard-blocked on a document nobody has yet
-(§6.1 item 1). If you cannot obtain the annexure, start at P-04.
+delivered** by the session that wrote §6.3, and **P-04 is delivered** by the session that
+wrote its block below (manual migration/redeploy still pending) — so the live order is now
+**P-01 → P-06 → P-03**, with the caveat that P-01 is hard-blocked on a document nobody has
+yet (§6.1 item 1). If you cannot obtain the annexure, start at **P-06**.
 
 **P-01 · Free-text eligibility screening · Tier 1 · highest value in the plan.**
 An MP's recommendation arrives as prose: *"construction of community hall cum marriage
@@ -502,11 +503,23 @@ Built — see §6.3 for what exists, what is untested, and the one manual step i
 Read that before touching it; the security reasoning is the substance of the feature and
 a well-meant simplification will undo it.
 
-**P-04 · Document AI on UCs, certificates and bills · Tier 1 · total gap.**
+**P-04 · Document AI on UCs, certificates and bills · Tier 1 · ~~total gap~~ DELIVERED.**
 OCR → key-value extraction → cross-field consistency against the portal record,
-surfacing only mismatches. The data model currently reduces this to `has_uc BOOLEAN` and
-a `uc_date` nothing reads. The largest volume of pure drudgery in the workflow and the
-most AI-native task in the scheme.
+surfacing only mismatches. Built as two deliberately separate stages: `document_ai.ts`
+reads fields off the page (one model call, `gemini-3.8-flash`), `document_reconcile.ts`
+compares them against the work with plain arithmetic — the `D-0xx` findings are
+recomputable by hand, never a model's "do these disagree?". Findings are **not alerts**
+(no `alerts` rows, no district budget, no `answer_key` scoring); a null extracted field
+skips its check and never becomes a `0`-shortfall finding (Doctrine 11). Extractions are
+append-only latest-wins, and the one write back to `works` — accepting D-007 sets
+`has_uc`/`uc_date`, which gates R-003 — is gated on a human so a poor scan cannot silence
+a compliance rule. Surface: `/api/documents/*` (see API_CONTRACT §10b), router
+`routers/documents.ts`, migration `013_document_extraction.sql`, UI `DocumentPanel.tsx`.
+Tests: `backend/tests/document_ai.test.ts` (extraction seam stubbed, reconciliation pure).
+**Manual steps before it runs live (do NOT let code do these):** apply migration 013 in
+the Supabase SQL editor, redeploy Railway, then one live Gemini smoke test — until 013 is
+applied the endpoints 500 on the missing tables, the same live-DB drift that fails the
+`payments.sequence_number` rule test.
 
 **P-06 · Evidence photo verification · Tier 1 · existing piece dead.**
 Five distinct checks hide inside "verify the photo" — **do not conflate them**: geotag
