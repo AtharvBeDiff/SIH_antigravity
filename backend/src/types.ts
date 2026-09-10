@@ -267,6 +267,49 @@ export interface Document {
   filename: string;
   storage_key: string;
   uploaded_at: string;
+
+  /**
+   * Added by migration 013. Nullable because rows written before it exist and carry none of
+   * these — `services/documents.ts` falls back to the stored blob's own type rather than
+   * treating an older row as unreadable.
+   */
+  content_type: string | null;
+  size_bytes: number | null;
+  /**
+   * sha256 of the stored bytes. Not unique: the same certificate legitimately appears twice
+   * when a re-upload corrects metadata. Its purpose is that the same file attached to two
+   * different works is detectable — the document analogue of photo reuse.
+   */
+  content_sha256: string | null;
+}
+
+/**
+ * A site photograph uploaded against a work. Added by migration 014 (P-06).
+ *
+ * The row holds the stored object and the deterministic facts read from its bytes at upload:
+ * the sha256, and the EXIF GPS coordinate and capture time parsed by the dependency-free
+ * reader in `services/exif.ts`.
+ *
+ * `exif_latitude`/`exif_longitude` are nullable, and null means the image carried no geotag —
+ * NEVER 0. (0, 0) is a real point in the Gulf of Guinea; writing it for a missing geotag would
+ * invent a location 8,000 km from any Indian work. Doctrine 11 at the column level.
+ *
+ * Distinct from `works.evidence_image_key` (the single bare key R-010 reads and which nothing
+ * populates): a work has many photos here, each analysed on its own.
+ */
+export interface WorkPhoto {
+  id: string;
+  work_id: string;
+  caption: string | null;
+  storage_key: string;
+  content_type: string;
+  size_bytes: number;
+  content_sha256: string;
+  exif_latitude: number | null;
+  exif_longitude: number | null;
+  exif_taken_at: string | null;
+  uploaded_by: string;
+  uploaded_at: string;
 }
 
 export interface Alert {
@@ -366,8 +409,33 @@ export interface Inspection {
   inspection_date: string;
   latitude: number;
   longitude: number;
-  overall_status: 'PASS' | 'FAIL' | 'PARTIAL';
-  items: InspectionItem[];
+  /**
+   * The inspector's verdict, as free text.
+   *
+   * Deliberately not a union. The column is `TEXT NOT NULL` with no CHECK constraint
+   * (full_schema.sql:631), and `routers/inspection.ts:67` writes `body['overall_status'] as string`
+   * straight from an unvalidated request body — so any string at all can reach the column, whatever
+   * the typed writer in `services/inspections.ts` accepts. A union here would be a compile-time
+   * promise that neither the schema nor any validation upholds. The frontend mirror is `string` too.
+   *
+   * `inspection_reconcile.ts` *recognises* two vocabularies: the field app's SATISFACTORY /
+   * DEFECTS_FOUND / WORK_NOT_STARTED / INACCESSIBLE, and a legacy PASS / FAIL / PARTIAL. That is a
+   * statement about what the check tolerates, not about what the table holds — nothing in this repo
+   * writes the legacy set, and no row has been surveyed to confirm one exists.
+   *
+   * Consumers must therefore treat an unrecognised value as unknown rather than as a failure:
+   * `inspection_reconcile.ts` runs I-002 only for statuses it recognises, so a status it has
+   * never seen produces no finding instead of a wrong one.
+   */
+  overall_status: string;
+  /**
+   * Optional, because there is no `items` column on `inspections` — the checklist lives in the
+   * separate `inspection_items` table (full_schema.sql:640). A row read straight out of the
+   * database never carries this field; `GET /inspections/:id` hydrates it, and
+   * `getInspectionDetail` returns it alongside the inspection rather than inside it. Requiring it
+   * on the row type forced every writer to invent an empty array that the insert then dropped.
+   */
+  items?: InspectionItem[];
   notes: string | null;
   photo_keys: string[];
   synced: boolean;

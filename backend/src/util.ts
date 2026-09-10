@@ -130,6 +130,49 @@ export function haversineMeters(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/**
+ * The placeholder coordinate the CSV ingest writes when a work's row carries no latitude or
+ * longitude — the centroid of Delhi. See `data-gen`/`ingest.ts`, which does
+ * `parseFloat(record['latitude'] || '28.6139')`, so a blank cell lands here rather than as null.
+ *
+ * This is the one place the pair is named, so a check that must not measure a distance *to* the
+ * placeholder can recognise it. Every work whose coordinate was never captured shares this exact
+ * point; a geodistance computed against it is a distance to Delhi, not to the site.
+ */
+export const INGEST_DEFAULT_LATITUDE = 28.6139;
+export const INGEST_DEFAULT_LONGITUDE = 77.2090;
+
+/**
+ * True when a coordinate pair carries the ingest's Delhi-centroid placeholder rather than a
+ * captured location. **Either component is enough**, because the ingest defaults them
+ * independently — `routers/ingest.ts` runs `parseFloat(record['latitude'] || '28.6139')` and
+ * `parseFloat(record['longitude'] || '77.2090')` as two separate statements, and nothing requires
+ * the two cells to be filled or blank together. A row with a real latitude and a blank longitude
+ * therefore produces a half-fabricated pair — one captured component, one placeholder — which is
+ * *worse* than the fully-defaulted case, because the resulting point is plausible instead of
+ * obviously Delhi. Requiring both to match would let exactly that pair through and measure a
+ * haversine distance to a longitude nobody ever recorded.
+ *
+ * Exact float equality is correct — and only correct — here: these are compared against the same
+ * hardcoded literals the ingest wrote, not against a computed value, so there is no rounding to
+ * tolerate.
+ *
+ * The cost is a false positive on a real work that genuinely sits at latitude 28.6139 or
+ * longitude 77.2090 — a line through central Delhi rather than a single address, so a wider net
+ * than before. That work loses a geocheck; it never gains a fabricated finding. Skipping a check
+ * is recoverable and is stated on screen as "could not run"; a fabricated distance is not.
+ *
+ * `== null` on either component (not `=== null`) so an absent column arriving as `undefined`
+ * from `db.ts`'s `select('*')` is treated as "no coordinate", never as a placeholder.
+ */
+export function isDefaultedCoordinate(
+  lat: number | null | undefined,
+  lon: number | null | undefined,
+): boolean {
+  if (lat == null || lon == null) return false;
+  return lat === INGEST_DEFAULT_LATITUDE || lon === INGEST_DEFAULT_LONGITUDE;
+}
+
 // ─── Statistics ──────────────────────────────────────────────
 
 /** Median of a sorted-or-unsorted numeric array. */
@@ -220,6 +263,35 @@ export function hexHamming(a: string, b: string): number {
     }
   }
   return dist;
+}
+
+// ─── Vector Math ─────────────────────────────────────────────
+
+/**
+ * Cosine similarity of two equal-length vectors (−1..1; 0..1 in practice for the
+ * unit-normalised embeddings this is used with). Used by the P-03 semantic duplicate
+ * finder to rank works by how close their embedded text vectors are.
+ *
+ * Scale-invariant — it divides out both magnitudes — so a truncated (MRL) embedding that
+ * the model did not re-normalise still ranks correctly. Throws a plain `Error` (never
+ * `ApiError`; this module deliberately imports none) on the two inputs that make the ratio
+ * meaningless: unequal lengths (a cross-model comparison the caller should have prevented)
+ * and a zero vector (no direction to compare). Both are programming errors, not user input.
+ */
+export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) {
+    throw new Error(`Vectors must be same length: ${a.length} vs ${b.length}`);
+  }
+  let dot = 0, magA = 0, magB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i]! * b[i]!;
+    magA += a[i]! * a[i]!;
+    magB += b[i]! * b[i]!;
+  }
+  if (magA === 0 || magB === 0) {
+    throw new Error('Cannot compute cosine similarity against a zero vector');
+  }
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }
 
 // ─── Template rendering ─────────────────────────────────────

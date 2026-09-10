@@ -55,10 +55,34 @@ export function getDb(): SupabaseClient {
 // don't map to the query builder", described as executing "parameterised SQL". It
 // parameterised nothing: it interpolated the query text into an `EXECUTE format`
 // under `SECURITY DEFINER`. Removed, along with the `exec()` wrapper nothing called.
+//
+// ## Why the row generic is `T extends object` and not `Record<string, unknown>`
+//
+// It was `Record<string, unknown>` and produced 44 of this project's typecheck errors —
+// every `all<Work>`, `get<Alert>`, `insert<Inspection>` call in the codebase. The cause is
+// not the call sites: TypeScript gives an *implicit index signature* to type aliases only,
+// never to an `interface`. Every row type in `types.ts` is an interface, so none of them
+// satisfy `Record<string, unknown>` however well-formed they are.
+//
+// The constraint also bought nothing. `T` appears in exactly one place in each helper — the
+// cast on the returned rows — so it constrains no argument and enables no property access.
+// It was a shape assertion on the caller's type declaration style, which is why the fix is
+// to drop it rather than to add `[key: string]: unknown` to twenty interfaces or convert
+// them all to type aliases.
+//
+// `object` still rejects the primitive mistakes (`all<string>`, `all<number>`) while accepting an
+// interface. It does not reject `all<number[]>` — an array is an `object` in TypeScript — so what
+// survives is a guard against primitives, not a check that `T` is row-shaped. Nothing in the type
+// system will stop a caller asking for a shape the table cannot return.
+//
+// The `as unknown as T` casts below are the honest consequence: what
+// PostgREST returns is unvalidated at runtime either way, and the previous single-step cast
+// only compiled because the constraint made the two types look related. Nothing here
+// verifies the database's columns match the interface — that is what the migrations are for.
 // ─────────────────────────────────────────────────────────────
 
 /** SELECT multiple rows from a table with optional filters. */
-export async function all<T extends Record<string, unknown>>(
+export async function all<T extends object>(
   table: string,
   options?: {
     where?: Record<string, unknown>;
@@ -96,11 +120,11 @@ export async function all<T extends Record<string, unknown>>(
 
   const { data, error } = await query;
   if (error) throw new Error(`DB all(${table}): ${error.message}`);
-  return (data ?? []) as T[];
+  return (data ?? []) as unknown as T[];
 }
 
 /** SELECT a single row by primary key or filters. */
-export async function get<T extends Record<string, unknown>>(
+export async function get<T extends object>(
   table: string,
   where: Record<string, unknown>,
   select?: string,
@@ -118,11 +142,11 @@ export async function get<T extends Record<string, unknown>>(
 
   const { data, error } = await query.limit(1).maybeSingle();
   if (error) throw new Error(`DB get(${table}): ${error.message}`);
-  return (data as T) ?? null;
+  return (data as unknown as T) ?? null;
 }
 
 /** INSERT a row. Returns the inserted row. */
-export async function insert<T extends Record<string, unknown>>(
+export async function insert<T extends object>(
   table: string,
   row: Record<string, unknown>,
 ): Promise<T> {
@@ -133,7 +157,7 @@ export async function insert<T extends Record<string, unknown>>(
 }
 
 /** INSERT multiple rows. Returns inserted rows. */
-export async function insertMany<T extends Record<string, unknown>>(
+export async function insertMany<T extends object>(
   table: string,
   rows: Record<string, unknown>[],
 ): Promise<T[]> {
@@ -145,7 +169,7 @@ export async function insertMany<T extends Record<string, unknown>>(
 }
 
 /** UPSERT a row (insert or update on conflict). */
-export async function upsert<T extends Record<string, unknown>>(
+export async function upsert<T extends object>(
   table: string,
   row: Record<string, unknown>,
   onConflict: string,
@@ -161,7 +185,7 @@ export async function upsert<T extends Record<string, unknown>>(
 }
 
 /** UPSERT multiple rows. */
-export async function upsertMany<T extends Record<string, unknown>>(
+export async function upsertMany<T extends object>(
   table: string,
   rows: Record<string, unknown>[],
   onConflict: string,
@@ -177,7 +201,7 @@ export async function upsertMany<T extends Record<string, unknown>>(
 }
 
 /** UPDATE rows matching filters. Returns updated rows. */
-export async function update<T extends Record<string, unknown>>(
+export async function update<T extends object>(
   table: string,
   where: Record<string, unknown>,
   updates: Record<string, unknown>,

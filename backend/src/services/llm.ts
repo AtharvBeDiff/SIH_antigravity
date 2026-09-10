@@ -1,10 +1,12 @@
 /**
  * LLM client — the single place this codebase talks to a language model.
  *
- * One file, one entry point (`generateText`), so that every model call in DRISHTI
- * shares the same key handling, timeout, retry policy and failure semantics. The
- * alternative — each feature calling `fetch` against the Gemini endpoint — means four
- * subtly different retry loops and four places to look when a key rotates.
+ * One file, two entry points — `generateText` for a prompt and `generateFromDocument` for
+ * a prompt plus a file the model can see — both funnelling into one private `callModel`, so
+ * that every model call in DRISHTI shares the same key handling, timeout, retry policy and
+ * failure semantics. The alternative — each feature calling `fetch` against the Gemini
+ * endpoint — means four subtly different retry loops and four places to look when a key
+ * rotates.
  *
  * ## The provider, and why the key shape matters
  *
@@ -54,13 +56,14 @@ import { ApiError } from '../http.ts';
  * Default model.
  *
  * Overridable with `GEMINI_MODEL` because Google's Flash line moves faster than this
- * repository will: `gemini-3-flash-preview` is what the graphify tooling on this box
- * defaults to, while Google's own current documentation examples name `gemini-3.8-flash`.
- * Hardcoding either one dates the file, so the default is the conservative choice and
- * the environment variable is the escape hatch. Nothing in DRISHTI's behaviour depends
- * on which of the two answers.
+ * repository will. Set to `gemini-3.8-flash`, the name in Google's current documentation
+ * examples and the operator's chosen model for this deployment. `gemini-3-flash-preview`
+ * was the previous default (what the graphify tooling on this box uses); it is a preview
+ * alias and Google retires those, so a fixed release name is the safer default. Nothing in
+ * DRISHTI's behaviour depends on which; the environment variable remains the escape hatch
+ * if this name is ever retired in turn.
  */
-const DEFAULT_MODEL = 'gemini-3-flash-preview';
+const DEFAULT_MODEL = 'gemini-3.8-flash';
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
@@ -100,6 +103,52 @@ export interface GenerateResult {
   /** Attempt number that succeeded, 1-based. >1 means the call was retried. */
   attempts: number;
 }
+
+/**
+ * One document or image sent alongside a prompt.
+ *
+ * `data` is raw bytes; base64 encoding happens inside {@link generateFromDocument} so no
+ * caller has to remember it and no base64 string is built twice. `mimeType` must be one
+ * the model accepts — {@link VISION_MIME_TYPES} is the list this codebase permits, which
+ * is narrower than Gemini's.
+ */
+export interface InlineDocument {
+  data: Buffer | Uint8Array;
+  mimeType: string;
+}
+
+/**
+ * MIME types accepted for a document-understanding call.
+ *
+ * Matches the `evidence` storage bucket's `allowed_mime_types` in
+ * `supabase/migrations/003_storage_buckets.sql` exactly. Two lists that are supposed to
+ * agree and are maintained separately will diverge, so if this changes, change that too —
+ * a file the bucket accepts but this rejects becomes a document that uploads and can never
+ * be read.
+ */
+export const VISION_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+] as const;
+
+/**
+ * Upper bound on the bytes sent to the model in one call.
+ *
+ * 5 MB, matching the `evidence` bucket's own `file_size_limit`. Gemini's inline-data path
+ * tolerates more, but a document that cannot be stored cannot be extracted either, so the
+ * tighter of the two limits is the only one worth enforcing. Above this, Google's own
+ * guidance is the Files API — a different endpoint, not implemented here, and its absence
+ * is reported rather than worked around.
+ *
+ * The upload boundary (`MAX_UPLOAD_BYTES` in `documents.ts`) must stay `<=` this: a file
+ * accepted for storage that this then rejects is an object in the bucket nothing can read.
+ * The two are separate constants — a store ceiling and this model ceiling — held in order by
+ * a test rather than derived from each other, so lowering this below the upload ceiling is
+ * what that test (`tests/document_ai.test.ts`) exists to catch.
+ */
+export const MAX_INLINE_BYTES = 5 * 1024 * 1024;
 
 /** Resolves the key, honouring the Google SDKs' own precedence. */
 function apiKey(): string | undefined {
@@ -198,6 +247,79 @@ export async function generateText(
   prompt: string,
   options: GenerateOptions = {},
 ): Promise<GenerateResult> {
+  return callModel([{ text: prompt }], options);
+}
+
+/**
+ * One document-understanding call: a prompt plus a file the model can see.
+ *
+ * The same key handling, timeout, retry policy and failure semantics as
+ * {@link generateText} — both funnel into {@link callModel}, so there is one retry loop in
+ * this codebase rather than two that drift apart.
+ *
+ * Refuses before the network on two grounds, because both are facts about the request that
+ * a retry cannot change:
+ *   - `400 DOCUMENT_UNSUPPORTED_TYPE` for a MIME type outside {@link VISION_MIME_TYPES}.
+ *   - `413 DOCUMENT_TOO_LARGE` above {@link MAX_INLINE_BYTES}, naming the actual size.
+ *
+ * The document part is placed **before** the prompt text. Google's own document-processing
+ * guidance puts the file first when a single file is paired with an instruction; the
+ * ordering measurably affects extraction quality, so it is fixed here rather than left to
+ * each caller to get right or wrong independently.
+ */
+export async function generateFromDocument(
+  prompt: string,
+  document: InlineDocument,
+  options: GenerateOptions = {},
+): Promise<GenerateResult> {
+  const mime = document.mimeType.trim().toLowerCase();
+  if (!(VISION_MIME_TYPES as readonly string[]).includes(mime)) {
+    throw new ApiError(
+      400,
+      'DOCUMENT_UNSUPPORTED_TYPE',
+      `Cannot read a '${document.mimeType}' document. Supported types: ` +
+        `${VISION_MIME_TYPES.join(', ')}.`,
+    );
+  }
+
+  const bytes = document.data.byteLength;
+  if (bytes > MAX_INLINE_BYTES) {
+    throw new ApiError(
+      413,
+      'DOCUMENT_TOO_LARGE',
+      `The document is ${(bytes / 1_048_576).toFixed(1)} MB, above the ` +
+        `${(MAX_INLINE_BYTES / 1_048_576).toFixed(0)} MB limit for inline document ` +
+        'reading. Larger files need Gemini\'s Files API, which is not implemented here.',
+    );
+  }
+
+  const base64 = Buffer.from(
+    document.data.buffer,
+    document.data.byteOffset,
+    document.data.byteLength,
+  ).toString('base64');
+
+  return callModel(
+    [{ inlineData: { mimeType: mime, data: base64 } }, { text: prompt }],
+    options,
+  );
+}
+
+/** A single part of a Gemini request: text, or inline file bytes. */
+type ModelPart = { text: string } | { inlineData: { mimeType: string; data: string } };
+
+/**
+ * The one place this codebase performs a model HTTP call.
+ *
+ * Extracted from `generateText` when document understanding arrived, so that the retry
+ * policy, the timeout-per-attempt controller, the auth-failure guidance and the
+ * safety-block handling are shared rather than reimplemented. The only difference between
+ * a text call and a vision call is the shape of `parts`.
+ */
+async function callModel(
+  parts: ModelPart[],
+  options: GenerateOptions,
+): Promise<GenerateResult> {
   const key = apiKey();
   if (!key) {
     throw new ApiError(
@@ -216,7 +338,7 @@ export async function generateText(
   const url = `${API_BASE}/models/${encodeURIComponent(model)}:generateContent`;
 
   const body: Record<string, unknown> = {
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    contents: [{ role: 'user', parts }],
     generationConfig: {
       temperature: options.temperature ?? 0,
       maxOutputTokens: options.maxOutputTokens ?? 2048,
@@ -321,5 +443,213 @@ export async function generateText(
     502,
     'LLM_FAILED',
     `The model call failed after ${MAX_ATTEMPTS} attempts. Last error: ${lastError}`,
+  );
+}
+
+// ─── Embeddings ──────────────────────────────────────────────
+//
+// The second thing this codebase asks a model for: a vector, not prose. Used by the P-03
+// semantic duplicate finder to rank works by how close their titles read once meaning —
+// not shared tokens — is the measure. Kept in this file, beside `generateText`, for the
+// same reason the two generation entry points share `callModel`: one key resolution, one
+// retry policy, one place a rotated key or a changed base URL is edited.
+
+/**
+ * Default embeddings model.
+ *
+ * Separate from {@link DEFAULT_MODEL} and overridable with `GEMINI_EMBED_MODEL`, because the
+ * embeddings line and the generation line version independently. `gemini-embedding-001` is
+ * the name in Google's current embeddings documentation. Treat this as a default to be
+ * confirmed against the deployment's key, not gospel: this box's generation model
+ * (`gemini-3.8-flash`) is already ahead of the public catalogue, so the embeddings name may
+ * move too — hence the environment escape hatch rather than a hardcoded constant.
+ */
+const DEFAULT_EMBED_MODEL = 'gemini-embedding-001';
+
+/** The embeddings model in effect, for display without making a call. */
+export function activeEmbedModel(): string {
+  const override = process.env['GEMINI_EMBED_MODEL'];
+  return override && override.trim() !== '' ? override.trim() : DEFAULT_EMBED_MODEL;
+}
+
+/**
+ * Requested output dimensionality, or `undefined` to take the model's default.
+ *
+ * `gemini-embedding-001` supports Matryoshka truncation to a shorter vector. Pinning this
+ * (via `GEMINI_EMBED_DIMS`) bounds the JSONB row size in `work_embeddings` and fixes the
+ * comparison basis; leaving it unset uses the model default. Either way the caller persists
+ * the *actual* returned length — this is a request, not a guarantee.
+ */
+export function activeEmbedDims(): number | undefined {
+  const raw = process.env['GEMINI_EMBED_DIMS'];
+  if (!raw || raw.trim() === '') return undefined;
+  const n = Number(raw.trim());
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
+export interface EmbedOptions {
+  /** Gemini task type. Defaults to `SEMANTIC_SIMILARITY` — the right hint for pairwise dedup. */
+  taskType?: string;
+  /** Request a truncated vector length. Defaults to {@link activeEmbedDims}. */
+  outputDimensionality?: number;
+  /** Override the embeddings model for one call. */
+  model?: string;
+  /** Override the timeout for one call. */
+  timeoutMs?: number;
+}
+
+export interface EmbedResult {
+  /** The embedding vector. Its `.length` is the source of truth for `dims` — never assume. */
+  vector: number[];
+  /** The model that actually served the request, for the cache row and its invalidation. */
+  model: string;
+  /** Vector length, read from the response, not from the request. */
+  dims: number;
+  /** Wall-clock milliseconds around the successful attempt only. */
+  latency_ms: number;
+  /** Attempt number that succeeded, 1-based. */
+  attempts: number;
+}
+
+/**
+ * Embed one text. Throws the same {@link ApiError} set as {@link generateText}
+ * (`503 LLM_UNCONFIGURED`, `502 LLM_AUTH`/`LLM_FAILED`, `504 LLM_TIMEOUT`).
+ */
+export async function embedText(text: string, options: EmbedOptions = {}): Promise<EmbedResult> {
+  const [only] = await callEmbed([text], options);
+  // callEmbed guarantees one result per input on success, so this is defined; the throw is a
+  // belt-and-braces guard that keeps the return type honest rather than asserting non-null.
+  if (!only) {
+    throw new ApiError(502, 'LLM_FAILED', 'The embeddings call returned no vector for the input.');
+  }
+  return only;
+}
+
+/**
+ * Embed many texts in one call, result order aligned to the input order. Returns `[]` for an
+ * empty input without a network call. Same failure semantics as {@link embedText}.
+ */
+export async function embedTexts(texts: string[], options: EmbedOptions = {}): Promise<EmbedResult[]> {
+  return callEmbed(texts, options);
+}
+
+/**
+ * The one place this codebase performs an embeddings HTTP call.
+ *
+ * Always uses `:batchEmbedContents`, even for a single text, so there is exactly one embed
+ * retry loop — the same reasoning that funnels both generation entry points through
+ * {@link callModel}. Mirrors that function's key handling, per-attempt timeout controller,
+ * backoff, auth-failure guidance and retry/no-retry split; only the URL, body and response
+ * parse differ. The REST batch body repeats `model` inside each request, which the API
+ * requires.
+ */
+async function callEmbed(texts: string[], options: EmbedOptions): Promise<EmbedResult[]> {
+  if (texts.length === 0) return [];
+
+  const key = apiKey();
+  if (!key) {
+    throw new ApiError(
+      503,
+      'LLM_UNCONFIGURED',
+      'No Gemini credential configured. Set GEMINI_API_KEY (or GOOGLE_API_KEY) in ' +
+        'backend/.env — the file is gitignored, so the key stays out of the repository. ' +
+        'Create an auth key at https://aistudio.google.com/apikey.',
+    );
+  }
+
+  const model = options.model ?? activeEmbedModel();
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const dims = options.outputDimensionality ?? activeEmbedDims();
+  const taskType = options.taskType ?? 'SEMANTIC_SIMILARITY';
+  const url = `${API_BASE}/models/${encodeURIComponent(model)}:batchEmbedContents`;
+
+  const requests = texts.map((text) => {
+    const req: Record<string, unknown> = {
+      model: `models/${model}`,
+      content: { parts: [{ text }] },
+      taskType,
+    };
+    if (dims) req['outputDimensionality'] = dims;
+    return req;
+  });
+  const body = { requests };
+
+  let lastError = '';
+  let timedOut = false;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const started = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': key,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        if (res.status === 401 || res.status === 403) {
+          throw new ApiError(502, 'LLM_AUTH', describeAuthFailure(res.status, text));
+        }
+        lastError = `HTTP ${res.status}: ${redact(text).slice(0, 300)}`;
+        if (!isRetryable(res.status) || attempt === MAX_ATTEMPTS) break;
+        await sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1));
+        continue;
+      }
+
+      const json = (await res.json()) as { embeddings?: { values?: number[] }[] };
+      const vectors = json.embeddings?.map((e) => e.values ?? []) ?? [];
+
+      // A short or ragged response is a failed reading, not a partial answer to paper over —
+      // a missing vector would otherwise become a zero-length one that cosineSimilarity rejects.
+      if (vectors.length !== texts.length || vectors.some((v) => v.length === 0)) {
+        lastError = `incomplete embeddings response (${vectors.length}/${texts.length} vectors)`;
+        if (attempt === MAX_ATTEMPTS) break;
+        await sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1));
+        continue;
+      }
+
+      const latency_ms = Date.now() - started;
+      return vectors.map((vector) => ({
+        vector,
+        model,
+        dims: vector.length,
+        latency_ms,
+        attempts: attempt,
+      }));
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+
+      if (err instanceof Error && err.name === 'AbortError') {
+        timedOut = true;
+        lastError = `timed out after ${timeoutMs}ms`;
+      } else {
+        lastError = redact(err instanceof Error ? err.message : String(err));
+      }
+      if (attempt === MAX_ATTEMPTS) break;
+      await sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  if (timedOut) {
+    throw new ApiError(
+      504,
+      'LLM_TIMEOUT',
+      `The embeddings call did not respond within ${timeoutMs}ms after ${MAX_ATTEMPTS} attempts.`,
+    );
+  }
+  throw new ApiError(
+    502,
+    'LLM_FAILED',
+    `The embeddings call failed after ${MAX_ATTEMPTS} attempts. Last error: ${lastError}`,
   );
 }
