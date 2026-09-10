@@ -1,0 +1,61 @@
+# DRISHTI — Render Blueprint for the backend service.
+#
+# Why this file exists: the backend's start command is
+# `node --experimental-strip-types src/server.ts`, and that flag does not exist before
+# Node 22.6. A host defaulting to Node 20 fails to boot with an unhelpful "bad option"
+# error, so the Node version is pinned in two places — `backend/.node-version` and the
+# NODE_VERSION variable below — because either alone has been known to be ignored
+# depending on how the service was created.
+#
+# There is no database service here on purpose. The backend is stateless: it talks to
+# hosted Supabase over HTTPS (see `backend/src/db.ts`), so nothing needs a volume and
+# nothing is lost when a free instance spins down.
+#
+# ── Before you deploy this publicly, read this ───────────────────────────────────
+#
+# No endpoint authenticates. `actorOf(req)` trusts an unverified `x-user-id` header, and
+# SUPABASE_SERVICE_ROLE_KEY bypasses every RLS policy in `supabase/full_schema.sql`
+# (docs/API_CONTRACT.md §11, and the note in `backend/env.example`). A public URL is
+# therefore an unauthenticated, service-role-backed API over the whole corpus. That is
+# acceptable for a demo over synthetic data and is NOT acceptable over anything real.
+#
+# ── Usage ────────────────────────────────────────────────────────────────────────
+#
+# Render reads this automatically when you create a Blueprint from the repository:
+#   Dashboard -> New -> Blueprint -> pick this repo -> Apply.
+# Variables marked `sync: false` are deliberately NOT stored here — Render prompts for
+# them at apply time so no credential is ever committed to git.
+
+services:
+  - type: web
+    name: drishti-backend
+    runtime: node
+    plan: free
+    # The repository root holds `backend/` and `frontend/`; only the backend is a service.
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    # `GET /api/health` (server.ts) — cheap, hits no database, so a health probe cannot
+    # be what exhausts a free Supabase quota.
+    healthCheckPath: /api/health
+    envVars:
+      # Must be >= 22.6 for --experimental-strip-types. Kept in step with .node-version.
+      - key: NODE_VERSION
+        value: "24"
+      # Required. Without both of these the process throws on first request.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Optional. Absent, `GET /api/query/status` reports available:false with a reason
+      # and the Ask-the-Corpus screen renders disabled — it does not fabricate answers.
+      - key: GEMINI_API_KEY
+        sync: false
+      # The deployed frontend's origin, e.g. https://drishti.vercel.app. CORS already
+      # allows any *.vercel.app origin (server.ts), so this is only needed for a custom
+      # domain — but setting it is free and makes the allowance explicit.
+      - key: FRONTEND_URL
+        sync: false
+      # Names the actor `demo-officer` when no x-user-id header is sent. Not auth.
+      - key: DEMO_MODE
+        value: "true"
