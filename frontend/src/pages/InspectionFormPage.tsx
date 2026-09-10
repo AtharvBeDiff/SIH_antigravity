@@ -21,8 +21,13 @@ export function InspectionFormPage() {
   const [selectedWorkId, setSelectedWorkId] = useState('');
   const [inspectorName, setInspectorName] = useState('Officer J. Smith');
   const [overallStatus, setOverallStatus] = useState<'SATISFACTORY' | 'DEFECTS_FOUND' | 'WORK_NOT_STARTED' | 'INACCESSIBLE'>('SATISFACTORY');
-  const [lat, setLat] = useState<number>(28.6139);
-  const [lng, setLng] = useState<number>(77.2090);
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
+  // 'acquiring' while the browser position request is in flight; 'acquired' on success;
+  // 'failed' if the API is absent or the user denied permission. Submission is blocked
+  // until 'acquired' — the inspections table has NOT NULL coordinates and a hardcoded
+  // fallback would plant false location data in the record.
+  const [gpsState, setGpsState] = useState<'acquiring' | 'acquired' | 'failed'>('acquiring');
   const [notes, setNotes] = useState('');
   // Every box starts unchecked. They used to default to `true` — all eight — so an
   // inspector who opened the form and submitted it filed a complete clean bill of
@@ -44,21 +49,33 @@ export function InspectionFormPage() {
       })
       .catch(console.error);
 
-    // Get real browser GPS if available
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         pos => {
           setLat(pos.coords.latitude);
           setLng(pos.coords.longitude);
+          setGpsState('acquired');
         },
-        () => console.log('Using default GPS coordinates')
+        () => setGpsState('failed'),
       );
+    } else {
+      setGpsState('failed');
     }
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedWorkId) return;
+    // D11: coordinates are NOT NULL in the schema. Block here rather than let the
+    // API reject a well-filled form, and never silently substitute a fallback location.
+    if (gpsState !== 'acquired' || lat === null || lng === null) {
+      setSubmitError(
+        gpsState === 'acquiring'
+          ? 'GPS location is still being determined. Wait a moment and try again.'
+          : 'GPS location could not be obtained. This inspection cannot be submitted without verified coordinates.',
+      );
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -167,13 +184,21 @@ export function InspectionFormPage() {
             </div>
           </div>
 
-          <div className="p-3 rounded-lg bg-slate-50 border border-white/5 flex items-center justify-between text-xs">
+          <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
             <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-blue-600" />
+              <MapPin className={`w-4 h-4 ${gpsState === 'acquired' ? 'text-blue-600' : gpsState === 'failed' ? 'text-rose-500' : 'text-slate-400'}`} />
               <span className="text-slate-500">GPS Coordinates:</span>
-              <strong className="text-slate-900 font-mono">{lat.toFixed(4)}, {lng.toFixed(4)}</strong>
+              {gpsState === 'acquired' && lat !== null && lng !== null
+                ? <strong className="text-slate-900 font-mono">{lat.toFixed(4)}, {lng.toFixed(4)}</strong>
+                : <span className="text-slate-400 italic">{gpsState === 'acquiring' ? 'Acquiring…' : 'Unavailable'}</span>
+              }
             </div>
-            <span className="text-emerald-400 font-medium">GPS Geotagged</span>
+            {gpsState === 'acquired'
+              ? <span className="text-emerald-600 font-medium">Geotagged</span>
+              : gpsState === 'acquiring'
+              ? <span className="text-amber-500 font-medium">Acquiring GPS…</span>
+              : <span className="text-rose-500 font-medium">GPS failed — cannot submit</span>
+            }
           </div>
         </Card>
 

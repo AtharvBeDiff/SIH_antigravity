@@ -6,6 +6,10 @@ import { formatCurrency, formatDate } from '../lib/utils';
 import { AlertTriangle, ArrowLeft, Calendar, Camera, CheckCircle2, Download, FileText, IndianRupee, Layers, MapPin, ShieldAlert, User } from 'lucide-react';
 import type { Work, Alert, Payment, Document, HealthReport } from '../types';
 import { HealthReportForm } from '../components/works/HealthReportForm';
+import { DocumentPanel } from '../components/works/DocumentPanel';
+import { PhotoPanel } from '../components/works/PhotoPanel';
+import { InspectionEvidencePanel } from '../components/works/InspectionEvidencePanel';
+import { DuplicateCheckPanel } from '../components/works/DuplicateCheckPanel';
 
 /**
  * Stage labels for the payment history. Mirrors the vocabulary in
@@ -66,8 +70,11 @@ export function WorkDetailPage() {
   }
 
   const payments = work.payments || [];
-  const documents = work.documents || [];
   const alerts = work.alerts || [];
+  // `work.documents` came back from `GET /works/:id` and was assigned to a `documents`
+  // variable that nothing rendered, for the whole life of this file. `DocumentPanel` below
+  // fetches from `/api/documents?work_id=` instead, because it needs each document's current
+  // extraction and that extraction's findings — which the works endpoint does not join.
 
   return (
     <div className="space-y-6">
@@ -287,6 +294,59 @@ export function WorkDetailPage() {
                 </p>
               </div>
             )}
+          </Card>
+
+          {/*
+            Document AI (P-04). Placed after the payment history because the figures it
+            compares against — expenditure, release, sanction — are the ones above it, and a
+            discrepancy reads as a discrepancy only next to what it disagrees with.
+          */}
+          <Card className="space-y-4">
+            <DocumentPanel
+              workId={work.id}
+              onWorkChanged={async () => {
+                // An accepted D-007 sets `has_uc`, which gates R-003. The Expenditure card
+                // renders that flag, so it is stale until the work is refetched.
+                try {
+                  setWork(await api.works.get(work.id));
+                } catch (e) {
+                  console.error('Failed to refresh work after a document finding', e);
+                }
+              }}
+            />
+          </Card>
+
+          {/*
+            Photo AI (P-06). After the documents shelf: the same evidence-versus-record idea one
+            modality over. V-001 is deterministic geotag proximity; V-002/003/004 are a model's
+            blind reading compared against the work. No finding writes back to the work, so —
+            unlike DocumentPanel — this panel needs no onWorkChanged refresh.
+          */}
+          <Card className="space-y-4">
+            <PhotoPanel workId={work.id} />
+          </Card>
+
+          {/*
+            Inspector evidence vs the work record (P-10). After the photographs because it reads
+            them: I-001 measures the inspector's GPS fix against the photos' EXIF geotags and
+            I-003 against their capture times, so the shelf those checks draw on is directly
+            above. This is the last of the three single-work evidence panels and the only one
+            whose observations came from a person standing at the site rather than from a file.
+            No finding writes back to the work — the correction belongs in e-SAKSHI — so like
+            PhotoPanel it needs no onWorkChanged refresh.
+          */}
+          <Card className="space-y-4">
+            <InspectionEvidencePanel workId={work.id} />
+          </Card>
+
+          {/*
+            Semantic duplicate check (P-03). Last on the evidence column: it compares this whole
+            work against its same-district peers, so it reads as a step out from the single-work
+            evidence above it. On demand and stateless — it ranks candidates for a human and writes
+            no finding back to the work, so like PhotoPanel it needs no onWorkChanged refresh.
+          */}
+          <Card className="space-y-4">
+            <DuplicateCheckPanel workId={work.id} />
           </Card>
         </div>
 
