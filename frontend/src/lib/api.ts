@@ -28,7 +28,29 @@ import type {
   WorkPhoto,
 } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+/**
+ * Same-origin, and deliberately not configurable.
+ *
+ * This read `import.meta.env.VITE_API_URL`, which Vite freezes into the bundle at
+ * BUILD time. The deployed value pointed at a Railway host that no longer exists,
+ * so every page going through this client called a dead server — and because the
+ * value is baked in, no amount of restarting fixed it. Meanwhile ten other pages
+ * fetch a relative '/api/...' directly and ignored this constant entirely, so the
+ * app had two different notions of where the backend was, and one of them was wrong.
+ *
+ * Both now resolve the same way: a relative '/api' handed to whichever proxy is in
+ * front. In production that is the rewrite in `vercel.json`; in development it is
+ * the `/api` proxy in `vite.config.ts` pointing at localhost:4000. The backend host
+ * is therefore configured in exactly one place per environment, in a file under
+ * version control, rather than in a dashboard env var that can silently go stale.
+ *
+ * `vercel.json` cannot carry this note itself — Vercel validates it strictly and
+ * rejects unknown keys, so a JSON comment key fails the deploy — so it goes here:
+ * that file's `/api/(.*)` rule must stay ABOVE the SPA catch-all `/(.*)`. Vercel
+ * takes the first match, and the catch-all answers everything with `index.html`,
+ * which is what made these fetches return HTML for a JSON parser to choke on.
+ */
+const API_BASE = '/api';
 
 export class ApiError extends Error {
   constructor(public code: string, message: string, public details?: any) {
