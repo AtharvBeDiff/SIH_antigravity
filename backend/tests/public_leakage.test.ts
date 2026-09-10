@@ -9,9 +9,14 @@ test('doctrine #4: public view strictly prevents internal leakage', () => {
     district_id: 'd_1',
     constituency_id: 'c_1',
     agency_id: 'a_1',
+    // Populated here even though nothing in the product writes it (doctrine 3 keeps these two
+    // columns inert), precisely so this test proves the public payload cannot carry an MP name
+    // even when one is present on the row.
+    mp_name: 'Test MP Name',
+    esakshi_work_id: 'ESK-0001',
     title: 'Solar High Mast Lighting Installation',
     description: 'Detailed public description',
-    category: 'ENERGY',
+    category: 'ELECTRICITY',
     sub_category: 'SOLAR',
     location_name: 'Village Square',
     latitude: 28.5,
@@ -46,7 +51,11 @@ test('doctrine #4: public view strictly prevents internal leakage', () => {
     answer_key_plant: true,
   };
 
-  const publicWork = toPublicWork(sensitiveWork, 'North District', 'North Constituency') as Record<string, unknown>;
+  // Cast through `unknown`: `PublicWork` is an interface with a fixed key set, so TypeScript
+  // rejects a direct cast to an index-signature type. That fixed key set is exactly what this
+  // test refuses to trust — it walks the keys the function actually returned at runtime, because
+  // a leak would be a key the declared type never mentioned.
+  const publicWork = toPublicWork(sensitiveWork, 'North District', 'North Constituency') as unknown as Record<string, unknown>;
 
   // Allowed whitelist fields
   const allowedKeys = new Set([
@@ -69,4 +78,7 @@ test('doctrine #4: public view strictly prevents internal leakage', () => {
   assert.strictEqual(publicWork['evidence_image_key'], undefined);
   assert.strictEqual(publicWork['agency_id'], undefined);
   assert.strictEqual(publicWork['district_id'], undefined);
+  // Doctrine 3: the public view names a work, a district and a constituency. It never names an MP.
+  assert.strictEqual(publicWork['mp_name'], undefined);
+  assert.strictEqual(publicWork['esakshi_work_id'], undefined);
 });

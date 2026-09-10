@@ -51,7 +51,9 @@ router.post('/generate', async (req, res) => {
   };
 
   await insert('digest_history', digest);
-  res.json({ data: { id: digestId, ...digest, html: undefined } }); // Don't return full HTML in list
+  // `digest` already carries `id`; naming it again before the spread meant the spread
+  // overwrote it (TS2783). Same value either way, so the spread alone is correct.
+  res.json({ data: { ...digest, html: undefined } }); // Don't return full HTML in list
 });
 
 /** GET /digest/:id — download digest HTML */

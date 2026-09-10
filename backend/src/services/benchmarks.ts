@@ -35,7 +35,7 @@ export async function computeBenchmarks(): Promise<Map<string, CategoryBenchmark
   for (const [key, amounts] of groups.entries()) {
     const [district_id, category] = key.split('::') as [string, string];
     const med = median(amounts);
-    const m = mad(amounts, med);
+    const m = mad(amounts);
     benchmarks.set(key, {
       district_id,
       category,
