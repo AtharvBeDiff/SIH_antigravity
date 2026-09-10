@@ -4,7 +4,9 @@
 
 import { Router } from 'express';
 import { getDb, all, get, count } from '../db.ts';
-import { qstr, qnum, paging, notFound } from '../http.ts';
+import { qstr, qnum, paging, notFound, ApiError, actorOf } from '../http.ts';
+import { isConfigured } from '../services/llm.ts';
+import { capability as duplicateCheckCapability, duplicateCheck } from '../services/work_embeddings.ts';
 import type { Work, Alert, Payment, Document } from '../types.ts';
 
 const router = Router();
@@ -41,6 +43,49 @@ router.get('/', async (req, res) => {
       has_more: (total ?? 0) > page * page_size,
     },
   });
+});
+
+/**
+ * GET /works/duplicate-check/status — whether semantic duplicate detection is configured.
+ *
+ * Literal path, declared before `/:id` so it is never captured as a work id. 200 with
+ * `available: false` when no credential is set rather than a 503, so the UI renders an honest
+ * disabled state instead of an action whose every use fails. Same contract as
+ * `/api/photos/status` and `/api/documents/status`.
+ */
+router.get('/duplicate-check/status', async (_req, res) => {
+  res.json({ data: duplicateCheckCapability() });
+});
+
+/**
+ * POST /works/:id/duplicate-check — rank same-district peers by semantic similarity of text.
+ *
+ * Body, all optional: `{ threshold?: number, limit?: number }`. Both are clamped in the
+ * service (threshold to 0..1, limit to 1..50), so an out-of-range tuning value is corrected
+ * rather than rejected.
+ *
+ * The credential check comes first, before the work is even looked up, so a keyless deployment
+ * answers "not configured" rather than a 404 — same ordering, and same reason, as
+ * `POST /api/photos/:id/analyze`.
+ *
+ * This raises no alert and touches no district alert budget. It is a findings-not-alerts
+ * capability that ranks candidates for a human, alongside — not replacing — the deterministic
+ * R-009 detector, whose own alerts are reported per candidate as `also_flagged_by_r009`.
+ */
+router.post('/:id/duplicate-check', async (req, res) => {
+  if (!isConfigured()) {
+    const cap = duplicateCheckCapability();
+    throw new ApiError(503, 'LLM_UNCONFIGURED', cap.reason ?? 'Model not configured.', {
+      status: cap,
+    });
+  }
+
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const threshold = typeof body['threshold'] === 'number' ? body['threshold'] : undefined;
+  const limit = typeof body['limit'] === 'number' ? body['limit'] : undefined;
+
+  const data = await duplicateCheck(req.params['id'] ?? '', actorOf(req), { threshold, limit });
+  res.json({ data });
 });
 
 /** GET /works/:id — work detail with alerts, payments, documents */
