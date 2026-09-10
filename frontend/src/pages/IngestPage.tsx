@@ -243,10 +243,19 @@ export function IngestPage() {
                     </div>
                     <p className="text-slate-500">
                       {p.payments_loaded ?? 0} stage payment(s)
-                      {p.payments_rejected > 0 && `, ${p.payments_rejected} rejected`}
-                      {p.legacy_installment_rows_ignored > 0 && `, ${p.legacy_installment_rows_ignored} legacy row(s) ignored`}
-                      {p.works_without_recommendation_date > 0 && `, ${p.works_without_recommendation_date} without a recommendation date`}
-                      {p.unrecognised_statuses > 0 && `, ${p.unrecognised_statuses} unrecognised status(es)`}
+                      {/*
+                        Every field on `payload` is optional — the ingest writes a counter only
+                        when it has one — so each comparison coalesces first, in the same `?? 0`
+                        idiom the two lines around it use. Written as a bare `p.x > 0` these
+                        compiled under TypeScript 5.9 and failed under the `~6.0.2` this package
+                        actually asks for (TS18048), which is why the deploy build broke while
+                        the local one passed. The rendered output is unchanged: `undefined > 0`
+                        and `0 > 0` were both already false.
+                      */}
+                      {(p.payments_rejected ?? 0) > 0 && `, ${p.payments_rejected} rejected`}
+                      {(p.legacy_installment_rows_ignored ?? 0) > 0 && `, ${p.legacy_installment_rows_ignored} legacy row(s) ignored`}
+                      {(p.works_without_recommendation_date ?? 0) > 0 && `, ${p.works_without_recommendation_date} without a recommendation date`}
+                      {(p.unrecognised_statuses ?? 0) > 0 && `, ${p.unrecognised_statuses} unrecognised status(es)`}
                     </p>
                     <p className="text-slate-500">Alerts after analysis: {p.alerts_generated ?? '—'}</p>
                     {/* The chain hash, as stored. Not a decorative string. */}
