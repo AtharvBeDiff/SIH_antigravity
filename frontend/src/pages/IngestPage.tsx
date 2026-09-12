@@ -1,6 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { PageHeader, Card, Spinner } from '../components/ui';
-import { AlertTriangle, CheckCircle2, History, Upload, UploadCloud } from 'lucide-react';
+import { PageHeader, Card, SeverityChip, Spinner } from '../components/ui';
+import { AlertTriangle, CheckCircle2, History, Search, Upload, UploadCloud } from 'lucide-react';
+
+/** One alert standing against a work in the batch just uploaded. */
+interface IngestFinding {
+  esakshi_work_id: string;
+  rule_id: string;
+  severity: string;
+  status: string;
+  evidence_text: string;
+}
 
 /** An INGEST_ATTEMPT row from the audit chain, as `GET /api/ingest/history` returns it. */
 interface IngestAuditEvent {
@@ -44,6 +53,15 @@ export function IngestPage() {
   const [undatedCount, setUndatedCount] = useState(0);
   /** Rows whose `status` was outside the enum, verbatim from the response. */
   const [badStatuses, setBadStatuses] = useState<string[]>([]);
+  /**
+   * What the rules found on the rows just uploaded.
+   *
+   * `null` before the first upload, `[]` after an upload that raised nothing —
+   * the two read very differently to an operator and are not collapsed.
+   */
+  const [findings, setFindings] = useState<IngestFinding[] | null>(null);
+  /** Works in the batch, for "N of M" — a denominator the findings alone don't give. */
+  const [batchSize, setBatchSize] = useState(0);
   /** null while the audit chain is still being read; [] means no ingest is on record. */
   const [history, setHistory] = useState<IngestAuditEvent[] | null>(null);
 
@@ -72,6 +90,8 @@ export function IngestPage() {
       setRejected([]);
       setUndatedCount(0);
       setBadStatuses([]);
+      setFindings(null);
+      setBatchSize(0);
       const text = await file.text();
       const res = await fetch('/api/ingest', {
         method: 'POST',
@@ -94,6 +114,8 @@ export function IngestPage() {
       setRejected(Array.isArray(d.payments_rejected) ? d.payments_rejected : []);
       setUndatedCount(d.works_without_recommendation_date ?? 0);
       setBadStatuses(Array.isArray(d.unrecognised_statuses) ? d.unrecognised_statuses : []);
+      setFindings(Array.isArray(d.findings) ? d.findings : []);
+      setBatchSize(d.count ?? 0);
       await loadHistory();
     } catch (err: any) {
       console.error('Ingest error:', err);
@@ -269,6 +291,124 @@ export function IngestPage() {
           </div>
         </Card>
       </div>
+
+      {/*
+        What the rules found on the rows just uploaded.
+
+        The response already carried a corpus-wide `analysis` summary, and on a
+        loaded corpus that answers a question the operator did not ask: upload 14
+        works, get told 2,214 were analysed and 1,647 alerts are in the backlog.
+        Worse, the alert budget caps each district at ten OPEN, and the existing
+        corpus has already filled it — so every finding on a freshly uploaded row
+        goes to BACKLOG and never appears on the triage queue. The file looked
+        accepted and nothing looked to have come of it.
+
+        This panel is the answer scoped to the batch, which is the only scope the
+        person who uploaded it can act on.
+      */}
+      {findings !== null && (
+        <Card className="space-y-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+              <Search className="w-4 h-4 text-blue-600" />
+              <span>What the rules found in this upload</span>
+            </h3>
+            {findings.length > 0 && (
+              <p className="text-xs text-slate-500">
+                {findings.length} finding{findings.length === 1 ? '' : 's'} across{' '}
+                {new Set(findings.map((f) => f.rule_id)).size} rule
+                {new Set(findings.map((f) => f.rule_id)).size === 1 ? '' : 's'}, on{' '}
+                {new Set(findings.map((f) => f.esakshi_work_id)).size} of the {batchSize} work
+                {batchSize === 1 ? '' : 's'} uploaded
+              </p>
+            )}
+          </div>
+
+          {findings.length === 0 ? (
+            /*
+              Stated as a result, not as an empty state. No rule fired on these
+              rows — which is a finding of its own and is not the same as the
+              analysis having failed to run.
+            */
+            <p className="text-xs text-slate-600 py-2">
+              No rule fired on any work in this upload. The analysis ran over the whole corpus
+              and raised nothing against these rows.
+            </p>
+          ) : (
+            <>
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="text-left font-medium px-3 py-2">e-SAKSHI ID</th>
+                      <th className="text-left font-medium px-3 py-2">Rule</th>
+                      <th className="text-left font-medium px-3 py-2">Severity</th>
+                      <th className="text-left font-medium px-3 py-2">Queue</th>
+                      <th className="text-left font-medium px-3 py-2">
+                        Evidence — the two values compared
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {/*
+                      Ordered by the backend, severity first, so the row a judge
+                      reads at the top is the worst thing in the file. Keyed on
+                      work+rule+index: one work can hold several findings and the
+                      same rule fires on several works, so neither alone is unique.
+                    */}
+                    {findings.map((f, i) => (
+                      <tr key={`${f.esakshi_work_id}:${f.rule_id}:${i}`} className="align-top">
+                        <td className="px-3 py-2 font-mono text-slate-900 whitespace-nowrap">
+                          {f.esakshi_work_id || '—'}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap">
+                          {f.rule_id}
+                        </td>
+                        <td className="px-3 py-2">
+                          <SeverityChip severity={f.severity} />
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {/*
+                            The alert's own status, not the work's — `StatusBadge`
+                            reads work statuses and would render BACKLOG through
+                            its unknown-value branch, in the same red it uses for
+                            CANCELLED.
+                          */}
+                          <span
+                            className={
+                              f.status === 'OPEN'
+                                ? 'inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200'
+                            }
+                          >
+                            {f.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">{f.evidence_text}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/*
+                The budget is explained rather than removed. It exists so a bad
+                day upstream cannot bury the triage queue, and an operator who
+                sees BACKLOG beside a critical finding is owed the reason.
+              */}
+              {findings.some((f) => f.status === 'BACKLOG') && (
+                <p className="text-[11px] text-slate-500">
+                  <span className="font-medium text-slate-700">On the queue column:</span> each
+                  district is capped at 10 OPEN alerts at a time, ranked by severity, so a
+                  reviewer is handed a day's work rather than a wall. Findings past the cap sit in
+                  BACKLOG — raised, evidenced and on the record, waiting for a slot. They are not
+                  dismissed and they are not lost.
+                </p>
+              )}
+            </>
+          )}
+        </Card>
+      )}
     </div>
   );
 }

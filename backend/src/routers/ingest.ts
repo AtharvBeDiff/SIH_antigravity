@@ -129,10 +129,27 @@ router.post('/', async (req, res) => {
 
     const db = getDb();
 
-    // Pre-fetch districts, constituencies, agencies to map them dynamically
-    const { data: districts } = await db.from('districts').select('id, lgd_code, name');
-    const { data: constituencies } = await db.from('constituencies').select('id, lgd_code, name');
-    const { data: agencies } = await db.from('agencies').select('id, name');
+    // Pre-fetch districts, constituencies, agencies to map them dynamically.
+    //
+    // The error is checked rather than destructured away. These three selects
+    // used to discard it, and a failure is silent but not harmless: `districts`
+    // comes back undefined, every lookup below misses, the fallback chain runs
+    // out at `newId()`, and each row is written with a district_id that exists
+    // in no table. The insert then fails on a foreign key, several hundred rows
+    // later, naming a constraint rather than the select that actually broke.
+    const [districtsRes, constituenciesRes, agenciesRes] = await Promise.all([
+      db.from('districts').select('id, lgd_code, name'),
+      db.from('constituencies').select('id, lgd_code, name'),
+      db.from('agencies').select('id, name'),
+    ]);
+    for (const [label, r] of [
+      ['districts', districtsRes], ['constituencies', constituenciesRes], ['agencies', agenciesRes],
+    ] as const) {
+      if (r.error) throw new Error(`ingest reference fetch (${label}): ${r.error.message}`);
+    }
+    const districts = districtsRes.data;
+    const constituencies = constituenciesRes.data;
+    const agencies = agenciesRes.data;
 
     const districtMap = new Map(districts?.map(d => [d.lgd_code || d.name, d.id]) || []);
     const constituencyMap = new Map(constituencies?.map(c => [c.lgd_code || c.name, c.id]) || []);
@@ -155,7 +172,16 @@ router.post('/', async (req, res) => {
     /** Rows whose `status` was not one of `WORK_STATUSES`. */
     const unrecognisedStatuses: string[] = [];
 
-    // Parse records (Skip header)
+    // Rows are parsed in one pass first, then their existing IDs are resolved in
+    // a few batched queries.
+    //
+    // This loop used to ask the database "does this work already exist?" once per
+    // row, sequentially, in the middle of building each record. On a 2,000-row
+    // export against hosted Postgres that is 2,000 serial round trips before the
+    // first write — minutes of latency, and long enough that the request is cut
+    // off by the proxy in front of it. The work a row needs is the same either
+    // way; only the number of round trips changes.
+    const records: Record<string, string>[] = [];
     for (let i = 1; i < lines.length; i++) {
       const values = parseCsvLine(lines[i]!);
       if (values.length < headers.length) continue;
@@ -164,7 +190,29 @@ router.post('/', async (req, res) => {
       headers.forEach((h, idx) => {
         record[h] = values[idx] || '';
       });
+      if (!record['work_id']) continue;
+      records.push(record);
+    }
 
+    // Existing works, keyed by the e-SAKSHI ID, so an ingest of a work already on
+    // record keeps its UUID and updates in place instead of being written twice.
+    // Chunked because the filter travels in the URL, and a single `in` list of a
+    // few thousand IDs exceeds what the server will accept.
+    const existingIdByEsakshi = new Map<string, string>();
+    const LOOKUP_CHUNK = 200;
+    for (let i = 0; i < records.length; i += LOOKUP_CHUNK) {
+      const chunk = records.slice(i, i + LOOKUP_CHUNK).map((r) => r['work_id']!);
+      const { data, error } = await db
+        .from('works')
+        .select('id, esakshi_work_id')
+        .in('esakshi_work_id', chunk);
+      if (error) throw new Error(`existing works lookup: ${error.message}`);
+      for (const row of data ?? []) {
+        if (row.esakshi_work_id) existingIdByEsakshi.set(row.esakshi_work_id, row.id);
+      }
+    }
+
+    for (const record of records) {
       // Map references
       const esakshi_work_id = record['work_id'] || '';
       if (!esakshi_work_id) continue;
@@ -249,14 +297,9 @@ router.post('/', async (req, res) => {
       if (parseFloat(record['first_installment'] || '0') > 0) legacyInstallmentRows += 1;
       else if (parseFloat(record['second_installment'] || '0') > 0) legacyInstallmentRows += 1;
 
-      // Check if we already have it in DB to retain its UUID, otherwise create one
-      const { data: existingWork } = await db
-        .from('works')
-        .select('id')
-        .eq('esakshi_work_id', esakshi_work_id)
-        .maybeSingle();
-
-      const workId = existingWork?.id || newId();
+      // Retain the UUID of a work already on record, otherwise mint one. Resolved
+      // from the map built above rather than by a query inside this loop.
+      const workId = existingIdByEsakshi.get(esakshi_work_id) || newId();
 
       // Stage payments travel with the work, so the two cannot be half-imported.
       if (record['payment_history']) {
@@ -327,6 +370,54 @@ router.post('/', async (req, res) => {
     // Run the rules engine & detectors pipeline to refresh the Triage Queue alerts!
     const summary = await runAnalyze(actor);
 
+    // What the rules found on *these* rows.
+    //
+    // `summary` is corpus-wide, and on a loaded corpus it answers a question the
+    // operator did not ask: they uploaded 14 works and were told 2,214 were
+    // analysed and 1,647 alerts are in the backlog. Worse, the alert budget caps
+    // each district at ten OPEN, and the existing corpus has already filled it,
+    // so every finding on a freshly uploaded row lands in BACKLOG and is
+    // invisible on the triage queue. The file looked like it had been accepted
+    // and nothing had come of it.
+    //
+    // The budget is not the thing to change — it exists so a bad day upstream
+    // cannot bury the queue. What was missing is the answer scoped to the rows
+    // just submitted, which is this.
+    const ingestedIds = worksToUpsert.map((w) => w.id as string);
+    const findings: Array<{
+      esakshi_work_id: string;
+      rule_id: string;
+      severity: string;
+      status: string;
+      evidence_text: string;
+    }> = [];
+
+    // Chunked: the id list travels in the query string, and 200 ids of 36
+    // characters keeps the URL well inside what the server accepts.
+    for (let i = 0; i < ingestedIds.length; i += 200) {
+      const { data, error } = await db
+        .from('alerts')
+        .select('rule_id, severity, status, evidence_text, works!inner(esakshi_work_id)')
+        .in('work_id', ingestedIds.slice(i, i + 200))
+        .order('severity_rank', { ascending: true });
+      if (error) throw new Error(`ingest findings: ${error.message}`);
+      for (const row of (data ?? []) as unknown as Array<{
+        rule_id: string;
+        severity: string;
+        status: string;
+        evidence_text: string;
+        works: { esakshi_work_id: string } | null;
+      }>) {
+        findings.push({
+          esakshi_work_id: row.works?.esakshi_work_id ?? '',
+          rule_id: row.rule_id,
+          severity: row.severity,
+          status: row.status,
+          evidence_text: row.evidence_text,
+        });
+      }
+    }
+
     // Record audit event
     await appendAudit(actor, 'INGEST_ATTEMPT', 'system', 'ingest', {
       timestamp: nowIso(),
@@ -337,6 +428,7 @@ router.post('/', async (req, res) => {
       works_without_recommendation_date: worksWithoutRecommendationDate,
       unrecognised_statuses: unrecognisedStatuses.length,
       alerts_generated: summary.open_alerts,
+      findings_on_batch: findings.length,
     });
 
     res.json({
@@ -356,7 +448,10 @@ router.post('/', async (req, res) => {
         works_without_recommendation_date: worksWithoutRecommendationDate,
         // Statuses outside `WORK_STATUSES`, recorded as NOT_STARTED.
         unrecognised_statuses: unrecognisedStatuses,
-        analysis: summary
+        analysis: summary,
+        // Every alert standing against the rows in this upload, whether the
+        // district budget left it OPEN or pushed it to BACKLOG.
+        findings,
       }
     });
   } catch (error: any) {
