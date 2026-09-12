@@ -13,7 +13,7 @@
  */
 
 import { canonicalJson, sha256, nowIso } from '../util.ts';
-import { getDb } from '../db.ts';
+import { all, getDb } from '../db.ts';
 import type { AuditEvent } from '../types.ts';
 
 const GENESIS_PREV_HASH = '0'.repeat(64);
@@ -61,6 +61,33 @@ export async function readAudit(options?: {
 
 // ─── Write ───────────────────────────────────────────────────
 
+/**
+ * Append one event to the chain.
+ *
+ * Read-then-insert, and `seq` is the primary key, so two appends that read the
+ * same head both compute the same `seq` and one of them loses on the unique
+ * index. That is not hypothetical: the analysis pipeline appends, every review
+ * action appends, and ingest appends — two officers clicking at once, or the
+ * test files the runner executes in parallel against the same database, is
+ * enough. It surfaced as `duplicate key value violates unique constraint
+ * "audit_events_pkey"` and took the whole request down with it.
+ *
+ * The loser retries from a freshly read head rather than being given a gap to
+ * fill. That keeps the chain doing what it exists to do: `seq` stays contiguous
+ * and each `prev_hash` still names the row actually before it, which is what
+ * `verifyChain` checks. Recomputation is required, not optional — `this_hash`
+ * commits to both `seq` and `prev_hash`, so reusing the first attempt's hash
+ * under a new `seq` would write a row that fails verification.
+ *
+ * A bounded number of attempts, because a retry loop that never gives up turns
+ * contention into a hang. Exhausting them throws, and the caller sees a failed
+ * append instead of an event silently missing from the log.
+ *
+ * This does not make concurrent appends correct in general — the window between
+ * the read and the insert is still there, and under sustained write pressure the
+ * honest fix is to have the database allocate `seq`. It makes the collision
+ * recoverable rather than fatal.
+ */
 export async function appendAudit(
   actor: string,
   action: string,
@@ -68,35 +95,65 @@ export async function appendAudit(
   entity_id: string,
   payload: Record<string, unknown> = {},
 ): Promise<AuditEvent> {
-  const head = await chainHead();
-  const prev_hash = head?.this_hash ?? GENESIS_PREV_HASH;
-  const seq = (head?.seq ?? 0) + 1;
-
-  const payload_hash = sha256(canonicalJson(payload));
-  const this_hash = sha256(`${seq}|${prev_hash}|${payload_hash}`);
-
-  const row = {
-    seq,
-    actor,
-    action,
-    entity_type,
-    entity_id,
-    payload,
-    payload_hash,
-    prev_hash,
-    this_hash,
-    created_at: nowIso(),
-  };
-
   const db = getDb();
-  const { data, error } = await db
-    .from('audit_events')
-    .insert(row)
-    .select()
-    .single();
+  // Hashed once: the payload is the same on every attempt, only its position in
+  // the chain changes.
+  const payload_hash = sha256(canonicalJson(payload));
 
-  if (error) throw new Error(`appendAudit: ${error.message}`);
-  return rowToAuditEvent(data);
+  const MAX_ATTEMPTS = 6;
+  // Per-writer backoff offset, derived from who is writing what.
+  //
+  // Two writers need *different* delays or they simply re-collide in lockstep on
+  // every attempt. The usual source of that difference is random jitter, and
+  // `Math.random()` is banned here — the determinism claim in
+  // `docs/ARCHITECTURE.md` is absolute and worth more than the convenience. This
+  // spreads them apart using a value they already differ on: the actor, the
+  // action and the payload digest.
+  const jitterMs = parseInt(sha256(`${actor}|${action}|${entity_id}|${payload_hash}`).slice(0, 2), 16) % 40;
+  let lastError = '';
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const head = await chainHead();
+    const prev_hash = head?.this_hash ?? GENESIS_PREV_HASH;
+    const seq = (head?.seq ?? 0) + 1;
+
+    const row = {
+      seq,
+      actor,
+      action,
+      entity_type,
+      entity_id,
+      payload,
+      payload_hash,
+      prev_hash,
+      this_hash: sha256(`${seq}|${prev_hash}|${payload_hash}`),
+      created_at: nowIso(),
+    };
+
+    const { data, error } = await db
+      .from('audit_events')
+      .insert(row)
+      .select()
+      .single();
+
+    if (!error) return rowToAuditEvent(data);
+
+    // 23505 is Postgres' unique_violation. Only that one is retried: any other
+    // failure is not a race, and retrying it would hide the real cause behind
+    // six identical attempts.
+    if (error.code !== '23505' || attempt === MAX_ATTEMPTS) {
+      throw new Error(`appendAudit: ${error.message}`);
+    }
+    lastError = error.message;
+
+    // Backoff grows with the attempt so sustained contention thins out, offset
+    // per writer so colliding writers do not line up again.
+    await new Promise((resolve) => setTimeout(resolve, attempt * 25 + jitterMs));
+  }
+
+  // Unreachable: the loop either returns or throws. Present so the function has
+  // no implicit fall-through if MAX_ATTEMPTS is ever edited to zero.
+  throw new Error(`appendAudit: exhausted ${MAX_ATTEMPTS} attempts (${lastError})`);
 }
 
 export async function appendAuditMany(
@@ -138,14 +195,22 @@ export interface ChainVerification {
 }
 
 export async function verifyChain(): Promise<ChainVerification> {
-  const db = getDb();
-  const { data, error } = await db
-    .from('audit_events')
-    .select('*')
-    .order('seq', { ascending: true });
-
-  if (error) throw new Error(`verifyChain: ${error.message}`);
-  const rows = (data ?? []).map(rowToAuditEvent);
+  // Via `all()` because it pages, with `seq` as the tiebreaker — `audit_events`
+  // has no `id` column.
+  //
+  // The direct `.select()` this replaced stopped at PostgREST's 1,000-row
+  // default, so verification covered the first thousand entries and reported
+  // `valid: true` over them. The endpoint's whole claim is that the log is
+  // tamper-evident; a verifier that silently stops a thousand rows in gives the
+  // answer "nothing has been altered" about a prefix, while presenting it as an
+  // answer about the chain. Everything after the cap was unexamined, and the
+  // `checked` count was the only hint — a figure no reader has a reason to
+  // compare against the table's size.
+  const rows = await all<Record<string, unknown>>('audit_events', {
+    orderBy: 'seq',
+    ascending: true,
+    tiebreakOn: 'seq',
+  }).then((data) => data.map(rowToAuditEvent));
 
   if (rows.length === 0) {
     return { valid: true, checked: 0, first_break: null };
