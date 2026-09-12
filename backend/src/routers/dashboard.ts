@@ -3,7 +3,7 @@
  */
 
 import { Router } from 'express';
-import { getDb, count } from '../db.ts';
+import { all, getDb, count } from '../db.ts';
 import { qstr } from '../http.ts';
 import { toMonth } from '../util.ts';
 import type { DashboardStats, SeverityLevel, TrendPoint, WorkStatus } from '../types.ts';
@@ -83,26 +83,28 @@ async function computeTrend(
   // Payments and alerts are scoped through the work set rather than by a second
   // district predicate: neither table carries a district, and joining for one would
   // ask PostgREST to re-resolve a relationship the works query has already resolved.
-  const { data: payments, error: pErr } = await db
-    .from('payments')
-    .select('work_id, amount, payment_date');
-  if (pErr) throw new Error(`dashboard trend (payments): ${pErr.message}`);
-  for (const p of (payments ?? []) as { work_id: string; amount: number; payment_date: string }[]) {
+  //
+  // Via `all()` because it pages. A bare `.select()` stops at PostgREST's
+  // 1,000-row default, which for 7,469 payments meant the released-funds curve
+  // was drawn from the first eighth of the corpus and simply stopped partway
+  // along the axis.
+  const payments = await all<{ work_id: string; amount: number; payment_date: string }>(
+    'payments',
+    { select: 'work_id, amount, payment_date' },
+  );
+  for (const p of payments) {
     if (districtId && !workIds.has(p.work_id)) continue;
     if (!p.payment_date) continue;
     const amount = Number(p.amount ?? 0);
     bucketFor(toMonth(p.payment_date)).released += Number.isFinite(amount) ? amount : 0;
   }
 
-  const { data: alertRows, error: aErr } = await db
-    .from('alerts')
-    .select('work_id, created_at, reviewed_at');
-  if (aErr) throw new Error(`dashboard trend (alerts): ${aErr.message}`);
-  for (const a of (alertRows ?? []) as {
+  const alertRows = await all<{
     work_id: string;
     created_at: string | null;
     reviewed_at: string | null;
-  }[]) {
+  }>('alerts', { select: 'work_id, created_at, reviewed_at' });
+  for (const a of alertRows) {
     if (districtId && !workIds.has(a.work_id)) continue;
     // `created_at`/`reviewed_at` are ISO-8601 timestamps; the first seven characters
     // are the YYYY-MM the bucket is keyed on.
@@ -148,16 +150,27 @@ router.get('/', async (req, res) => {
   // `id` and `sanction_date` are selected for the monthly trend, and
   // `released_amount` for `total_released` — a figure `OverviewPage.tsx` was deriving
   // as `total_sanctioned * 0.62` while the real column sat unread.
-  let worksQuery = db
-    .from('works')
-    .select(
+  // Via `all()` because it pages. At PostgREST's 1,000-row default this endpoint
+  // reported `total_works` as 1,000 against a 2,200-work corpus, and every figure
+  // derived from the list — sanctioned, expenditure, released, the status and
+  // category breakdowns, the completion rate — was computed over the same
+  // truncated set. The numbers were internally consistent, which is why nothing
+  // looked wrong on the page.
+  const worksList = await all<{
+    id: string;
+    status: string;
+    category: string | null;
+    sanctioned_amount: number;
+    released_amount: number | null;
+    expenditure: number;
+    sanction_date: string | null;
+    actual_completion_date: string | null;
+  }>('works', {
+    select:
       'id, status, category, sanctioned_amount, released_amount, expenditure, sanction_date, actual_completion_date',
-    );
-  if (district_id) worksQuery = worksQuery.eq('district_id', district_id);
-  const { data: works, error: wErr } = await worksQuery;
-  if (wErr) throw new Error(`dashboard works: ${wErr.message}`);
+    ...(district_id ? { where: { district_id } } : {}),
+  });
 
-  const worksList = works ?? [];
   const total_works = worksList.length;
   const completed_works = worksList.filter(w => w.status === 'COMPLETED').length;
   const total_sanctioned = worksList.reduce((s, w) => s + (w.sanctioned_amount as number), 0);
@@ -176,15 +189,20 @@ router.get('/', async (req, res) => {
     if (cat) works_by_category[cat] = (works_by_category[cat] ?? 0) + 1;
   }
 
-  // Alerts by severity
-  let alertsQuery = db.from('alerts').select('severity, status');
-  if (district_id) {
-    // Join through works for district filtering
-    alertsQuery = db.from('alerts').select('severity, status, works!inner(district_id)');
-    alertsQuery = alertsQuery.eq('works.district_id', district_id);
-  }
-  const { data: alerts } = await alertsQuery;
-  const alertsList = alerts ?? [];
+  // Alerts by severity. Paged for the same reason as the works fetch above —
+  // there are 3,273 alert rows, so an unpaged read reported under a third of
+  // them and `open_alerts` / `backlog_alerts` were both understated.
+  const alertsList = await all<{ severity: string; status: string }>(
+    'alerts',
+    district_id
+      ? {
+          // `alerts` carries no district; it is a property of the work, so the
+          // filter goes through the FK with an inner join.
+          select: 'severity, status, works!inner(district_id)',
+          where: { 'works.district_id': district_id },
+        }
+      : { select: 'severity, status' },
+  );
 
   const open_alerts = alertsList.filter(a => a.status === 'OPEN').length;
   const backlog_alerts = alertsList.filter(a => a.status === 'BACKLOG').length;

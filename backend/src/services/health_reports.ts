@@ -15,7 +15,7 @@
  * rather than 2,000 round trips inside the analysis loop.
  */
 
-import { getDb } from '../db.ts';
+import { all, getDb } from '../db.ts';
 import type { HealthReport } from '../types.ts';
 import { newId, nowIso } from '../util.ts';
 
@@ -162,12 +162,18 @@ export async function recentReports(limit = 100): Promise<HealthReport[]> {
  * a specific number of days of silence. See `detectors/delay.ts`.
  */
 export async function lastReportDateByWork(): Promise<Map<string, string>> {
-  const db = getDb();
-  const { data, error } = await db.from('health_reports').select('work_id, report_date');
-  if (error) throw error;
+  // Via `all()` because it pages — see the note in `payments.ts:allPayments`.
+  // The direct `.select()` this replaced returned 1,000 of 2,375 reports, so
+  // roughly two hundred works had a last-report date and the other ~275 looked
+  // as though nobody had ever inspected them. R-019 raised 293 alerts against
+  // the 31 works that actually qualify.
+  const rows = await all<{ work_id: string; report_date: string }>(
+    'health_reports',
+    { select: 'work_id, report_date' },
+  );
 
   const latest = new Map<string, string>();
-  for (const row of data ?? []) {
+  for (const row of rows) {
     if (!row.work_id || !row.report_date) continue;
     const date = String(row.report_date).slice(0, 10);
     const current = latest.get(row.work_id);

@@ -81,7 +81,26 @@ export function getDb(): SupabaseClient {
 // verifies the database's columns match the interface — that is what the migrations are for.
 // ─────────────────────────────────────────────────────────────
 
-/** SELECT multiple rows from a table with optional filters. */
+/**
+ * SELECT multiple rows from a table with optional filters.
+ *
+ * An unbounded call returns the whole table, paging as needed.
+ *
+ * PostgREST caps an unbounded SELECT at 1,000 rows and reports the cap only in
+ * the Content-Range header, which this client discards. So a single request
+ * returned 1,000 of 2,200 works and looked like a complete answer, and
+ * everything downstream inherited the truncation in silence: `runAnalyze`
+ * evaluated the first thousand works and reported the run as covering the
+ * corpus, while the 1,511-row `alerts` fetch it uses to preserve officer
+ * reviews came back 511 rows short, so those alerts were treated as new. Being
+ * handed a fresh primary key is what made the upsert try to rewrite the id of
+ * an alert a `review_action` already referenced, which is where this surfaced —
+ * a foreign-key error, three layers from the cause.
+ *
+ * A caller that asked for a specific page still gets exactly that page. Only an
+ * unbounded request pages, because only an unbounded request asks for
+ * everything.
+ */
 export async function all<T extends object>(
   table: string,
   options?: {
@@ -91,36 +110,71 @@ export async function all<T extends object>(
     limit?: number;
     offset?: number;
     select?: string;
+    /**
+     * Column that makes the page order total. Defaults to `id`.
+     *
+     * `audit_events` has no `id` — its primary key is `seq` — so the default
+     * tiebreaker would ask PostgREST to order by a column that does not exist
+     * and fail the read outright. A caller whose table is keyed differently
+     * names its key here.
+     */
+    tiebreakOn?: string;
   },
 ): Promise<T[]> {
   const db = getDb();
-  let query = db.from(table).select(options?.select ?? '*');
 
-  if (options?.where) {
-    for (const [col, val] of Object.entries(options.where)) {
-      if (val === null) {
-        query = query.is(col, null);
-      } else {
-        query = query.eq(col, val);
+  // Rebuilt per request: a PostgREST builder carries the range it was last
+  // given, so paging has to start from a clean one each time.
+  const build = (tiebreak: boolean) => {
+    let query = db.from(table).select(options?.select ?? '*');
+
+    if (options?.where) {
+      for (const [col, val] of Object.entries(options.where)) {
+        query = val === null ? query.is(col, null) : query.eq(col, val);
       }
     }
+    if (options?.orderBy) {
+      query = query.order(options.orderBy, { ascending: options.ascending ?? true });
+    }
+    // Paging a query with no total order can repeat one row across two pages
+    // and skip another entirely, because nothing obliges Postgres to return
+    // the same sequence twice. `id` is the default tiebreaker: unique on every
+    // table this is called for except `rule_probation`, which is keyed by
+    // rule_id and holds one row per rule, so it can never reach a second page
+    // and never takes this path. `tiebreakOn` overrides it for a table keyed on
+    // something else.
+    if (tiebreak) query = query.order(options?.tiebreakOn ?? 'id', { ascending: true });
+    return query;
+  };
+
+  if (options?.limit || options?.offset) {
+    let query = build(false);
+    if (options.limit) query = query.limit(options.limit);
+    if (options.offset) {
+      query = query.range(options.offset, options.offset + (options.limit ?? 1000) - 1);
+    }
+    const { data, error } = await query;
+    if (error) throw new Error(`DB all(${table}): ${error.message}`);
+    return (data ?? []) as unknown as T[];
   }
 
-  if (options?.orderBy) {
-    query = query.order(options.orderBy, {
-      ascending: options.ascending ?? true,
-    });
+  const PAGE = 1000;
+  const first = await build(false).range(0, PAGE - 1);
+  if (first.error) throw new Error(`DB all(${table}): ${first.error.message}`);
+  const head = (first.data ?? []) as unknown as T[];
+  if (head.length < PAGE) return head;
+
+  // A full first page means there is more, and from here the order has to be
+  // stable — so the whole read is reissued with the tiebreaker rather than
+  // stitching an unordered first page onto ordered ones.
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await build(true).range(from, from + PAGE - 1);
+    if (error) throw new Error(`DB all(${table}): ${error.message}`);
+    const batch = (data ?? []) as unknown as T[];
+    rows.push(...batch);
+    if (batch.length < PAGE) return rows;
   }
-
-  if (options?.limit) query = query.limit(options.limit);
-  if (options?.offset) query = query.range(
-    options.offset,
-    options.offset + (options.limit ?? 1000) - 1,
-  );
-
-  const { data, error } = await query;
-  if (error) throw new Error(`DB all(${table}): ${error.message}`);
-  return (data ?? []) as unknown as T[];
 }
 
 /** SELECT a single row by primary key or filters. */
