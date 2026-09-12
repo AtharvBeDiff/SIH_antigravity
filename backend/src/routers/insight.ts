@@ -5,7 +5,7 @@
 import { Router } from 'express';
 import { getDb } from '../db.ts';
 import { runEvaluation } from '../services/evaluation.ts';
-import { computeVintageAdjustment } from '../services/calibration.ts';
+import { computeCalibration, computeVintageAdjustment } from '../services/calibration.ts';
 import { getReadinessChecklist } from '../services/readiness.ts';
 
 const router = Router();
@@ -49,11 +49,24 @@ router.get('/calibration', async (_req, res) => {
     .maybeSingle();
 
   if (error) throw new Error(`calibration fetch: ${error.message}`);
-  if (!data) {
-    res.json({ data: null });
-    return;
-  }
-  res.json({ data: { ...data, vintage_adjustment: computeVintageAdjustment() } });
+
+  // No snapshot on record: compute one now rather than reporting `null`.
+  //
+  // This endpoint only ever read the newest `calibration_snapshots` row, and
+  // `computeCalibration` — the one function that writes such a row — had no
+  // caller anywhere in the repo. Nothing in the analysis pipeline, no route, no
+  // script. So the table stayed empty, the endpoint returned `data: null` on
+  // every request, and the calibration page was blank permanently. The
+  // comparison was fully implemented, correct, and unreachable.
+  //
+  // Computing on first read rather than adding a write to `runAnalyze`: the
+  // snapshot is a corpus aggregate that costs one `works` fetch, it is keyed by
+  // `run_at` so accumulating them is the intended history rather than a leak,
+  // and a reader asking for the calibration is the exact moment the comparison
+  // is wanted. `computeCalibration` persists what it computes, so the next
+  // request is served from the table.
+  const snapshot = data ?? (await computeCalibration());
+  res.json({ data: { ...snapshot, vintage_adjustment: computeVintageAdjustment() } });
 });
 
 /**
