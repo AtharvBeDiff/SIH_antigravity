@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -30,18 +30,72 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../../lib/utils';
 import { SyntheticBanner } from '../ui';
 import { useAppState } from '../../state';
+import { api } from '../../lib/api';
 
 export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const location = useLocation();
   const { meta, selectedDistrict, setSelectedDistrict, districts } = useAppState();
 
+  /*
+    The Triage Queue badge.
+
+    It was the string '14' — a literal, written when the seed corpus happened to
+    hold fourteen open alerts and never touched again. The queue itself has held
+    a different number since the first ingest; at the time this was replaced the
+    real figure was 39. A count in the navigation is read as a fact about the
+    work waiting, and a wrong one is worse than none: it is the first number an
+    officer sees, it decides whether they click, and nothing on the page reveals
+    the disagreement.
+
+    Scoped and filtered to match what clicking through actually shows —
+    `QueuePage` opens on `status=OPEN` narrowed by the selected district. A badge
+    counting something broader (BACKLOG too, or every district) would be a
+    correct number attached to the wrong question, which reads as a bug in the
+    queue rather than a difference in definition.
+
+    Null until the first response, and again on failure. It stays unrendered in
+    that state rather than showing a zero, because "no alerts are open" and "the
+    count could not be fetched" are different facts and a badge cannot say both.
+  */
+  const [openAlerts, setOpenAlerts] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const params: Record<string, string> = { status: 'OPEN' };
+    if (selectedDistrict) params['district_id'] = selectedDistrict;
+
+    api.alerts
+      .count(params)
+      .then((total) => {
+        if (!cancelled) setOpenAlerts(total);
+      })
+      .catch((err) => {
+        console.error('Failed to load open alert count:', err);
+        if (!cancelled) setOpenAlerts(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // Refetched on navigation as well as on district change: reviewing an alert
+    // in the detail page decrements this, and the badge would otherwise keep
+    // showing the pre-review figure until a full reload.
+  }, [selectedDistrict, location.pathname]);
+
   const navGroups = [
     {
       title: 'Casework & Overview',
       items: [
         { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-        { name: 'Triage Queue', path: '/alerts', icon: AlertCircle, badge: '14', badgeColor: 'rose' },
+        {
+          name: 'Triage Queue',
+          path: '/alerts',
+          icon: AlertCircle,
+          // Zero renders nothing: an empty queue is worth no rose pill.
+          badge: openAlerts ? String(openAlerts) : undefined,
+          badgeColor: 'rose',
+        },
         { name: 'Works Directory', path: '/works', icon: Layers },
         { name: 'Agencies', path: '/agencies', icon: Building2 },
         { name: 'Compliance', path: '/compliance', icon: ShieldCheck },

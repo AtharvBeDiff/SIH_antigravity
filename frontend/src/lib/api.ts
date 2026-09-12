@@ -59,7 +59,19 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+/**
+ * The paging envelope the list endpoints actually send.
+ *
+ * `meta.total` is an exact count computed by PostgREST alongside the page, so a
+ * caller that wants only the count can ask for `page_size=1` and read it,
+ * instead of pulling rows in order to call `.length` on them.
+ */
+interface Envelope<T> {
+  data: T;
+  meta?: { total: number; page: number; page_size: number; has_more: boolean };
+}
+
+async function requestEnvelope<T>(endpoint: string, options?: RequestInit): Promise<Envelope<T>> {
   const headers = new Headers(options?.headers);
   headers.set('Content-Type', 'application/json');
 
@@ -89,7 +101,23 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     );
   }
 
-  return json?.data as T;
+  // A 2xx whose body does not parse leaves `json` null. Coerced to an empty
+  // envelope so `request` still resolves to `undefined` here, as it did when it
+  // read `json?.data` — the alternative is a TypeError from destructuring null,
+  // which would turn a malformed response into a crash at the call site.
+  return (json ?? { data: undefined }) as Envelope<T>;
+}
+
+/**
+ * The common case: the payload, with the envelope discarded.
+ *
+ * Every call in this file went through a version of this that read `json?.data`
+ * and dropped `meta` on the floor, which is why no caller could get a total
+ * without fetching every row and counting it.
+ */
+async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const { data } = await requestEnvelope<T>(endpoint, options);
+  return data;
 }
 
 export const api = {
@@ -127,6 +155,23 @@ export const api = {
       return request<any>(`/alerts${q}`);
     },
     get: (id: string) => request<any>(`/alerts/${id}`),
+    /**
+     * How many alerts match, without fetching them.
+     *
+     * `page_size=1` because the count comes from the envelope, not from the rows:
+     * the server computes an exact total alongside the page, so one row is enough
+     * to carry it. Counting `list()` results instead would be wrong as well as
+     * wasteful — that caps at its page size, so a 50-row page over 200 matches
+     * reports 50.
+     *
+     * Returns null when the server sends no total, so a caller can tell "none
+     * match" from "could not find out". Those must not render the same way.
+     */
+    count: async (params?: Record<string, string>) => {
+      const q = new URLSearchParams({ ...(params ?? {}), page_size: '1' }).toString();
+      const { meta } = await requestEnvelope<any>(`/alerts?${q}`);
+      return meta?.total ?? null;
+    },
     review: (id: string, action: string, reason_code?: string, note?: string) => 
       request<any>(`/alerts/${id}`, {
         method: 'PATCH',
